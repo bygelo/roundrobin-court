@@ -1,0 +1,28 @@
+{
+  "name": "roundrobbin-court",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-sport venue booking. The first app on roundrobbin OS.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node script/migrate.ts",
+    "dev": "node src/server.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "gate": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@bygelo/roundrobbin-booking": "^0.1.2",
+    "@bygelo/roundrobbin-kernel": "^0.1.2",
+    "@hono/node-server": "^2.1.0",
+    "hono": "^4.13.1",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3"
+  }
+}

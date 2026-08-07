@@ -20,9 +20,44 @@ A kernel or pack change made *because of this app* is a finding, not a feature. 
 
 ## Status
 
-Not started. [ROADMAP.md](ROADMAP.md) carries 30 validated items across P0–P4, each with a named surface and a tiered falsifiable benchmark, inherited unchanged from the 2026-08-08 validation pass.
+**Running on the OS.** The app installs `@bygelo/roundrobbin-kernel` and `@bygelo/roundrobbin-booking` from GitHub Packages, applies six migrations in dependency order (kernel → booking → court), serves its own court-board route, books a court through the OS booking pack, and **gets a 409 on the second booking of the same slot** — a guarantee it inherited rather than wrote.
 
-Two items in that roadmap are now the OS's job and are marked accordingly — the durable store and the module kernel. The rest is this repo's work.
+Gate: `typecheck 0 · test 3/3`.
+
+Not one kernel or pack *behaviour* had to change to make this work. The OS needed exactly one edit, and it was packaging — exposing `./package.json` in the exports map so a consumer can resolve a package root to find its migrations. No kernel noun, table, or rule moved. That is the first real evidence the neutrality claim holds.
+
+[ROADMAP.md](ROADMAP.md) carries 30 validated items across P0–P4. Several are now the OS's job and are marked accordingly.
+
+## Run locally
+
+Requires Node 24+ and PostgreSQL 16+. The packages are private, so npm needs a GitHub token with `read:packages`:
+
+```powershell
+"@bygelo:registry=https://npm.pkg.github.com" | Set-Content .npmrc
+"//npm.pkg.github.com/:_authToken=$(gh auth token)" | Add-Content .npmrc
+npm install
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -c "CREATE DATABASE roundrobbin_court;"
+$env:DATABASE_URL = 'postgres://postgres@localhost:5432/roundrobbin_court'
+npm run db:migrate
+npm run dev
+```
+
+`.npmrc` is gitignored — it holds a token.
+
+## Verify
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgres://postgres@localhost:5432/roundrobbin_court'
+npm run gate
+```
+
+## What lives here
+
+- `src/app.ts` — the court module declaration and this app's routes
+- `migration/001_court.sql` — `sport_profile`, the only genuinely sport-specific table
+- `script/migrate.ts` — states the migration order: kernel, then packs, then this app
+
+`sport_profile` is worth a look, because it is the whole of "multi-sport" at the data layer. A sport carries a team size, a scoring rule, and a rating provider that is **allowed to be NULL** — badminton and padel have no DUPR equivalent, and modelling that absence honestly was cheaper than pretending every sport has a rating authority.
 
 ## The three findings that shaped this roadmap
 
