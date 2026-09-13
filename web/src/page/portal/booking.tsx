@@ -163,7 +163,8 @@ function BookingRow({
   const payment = PAYMENT_LABEL[booking.payment_state]
   return (
     <tr>
-      <td>{formatTimeRange(booking.starts_at, booking.ends_at, time_zone)}</td>
+      {/* Wide enough for "8:00 PM –" on one line, so the range breaks once, not three times. */}
+      <td style={{ minWidth: '6.5rem' }}>{formatTimeRange(booking.starts_at, booking.ends_at, time_zone)}</td>
       <td>{booking.court_name}</td>
       <td>
         <strong>{booking.contact.display_name}</strong>

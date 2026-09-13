@@ -3,7 +3,7 @@
 // button, so the whole board is keyboard operable — no drag anywhere.
 
 import { CaretLeft, CaretRight, Wrench } from '@phosphor-icons/react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { jsonBody, operatorFetch } from '../../api.ts'
 import {
   Alert,
@@ -185,6 +185,26 @@ function BoardView({ board, is_manager, onOpen }: { board: Board; is_manager: bo
   const now_minute = minuteFromDayStart(new Date(now).toISOString(), board.date, tz)
   const is_now_visible = now_minute > start && now_minute < end
 
+  // Open the timeline where the day is happening: the current hour today, the
+  // first booking on another day. Scrolled once per date, so a refresh every
+  // 30 seconds never yanks the view away from where staff scrolled to.
+  const timeline_ref = useRef<HTMLDivElement>(null)
+  const scrolled_date = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const element = timeline_ref.current
+    if (!element || scrolled_date.current === board.date) return
+    scrolled_date.current = board.date
+    const first_booking = board.court
+      .flatMap((court) => court.booking)
+      .map((one) => minuteFromDayStart(one.starts_at, board.date, tz))
+      .sort((a, b) => a - b)[0]
+    const focus_minute = is_now_visible ? now_minute : first_booking
+    if (focus_minute === undefined || element.scrollWidth <= element.clientWidth) return
+    const lane_width = element.scrollWidth
+    const target = ((focus_minute - start) / span) * lane_width - element.clientWidth / 3
+    element.scrollLeft = Math.max(0, target)
+  })
+
   const has_sale = board.court.some((one) => one.session.length > 0 || one.booking.length > 0)
   const closureFor = (court: BoardCourt) => [...board.closure, ...court.closure]
   const openSlot = (court: BoardCourt) => court.session.filter((one) => one.is_bookable && Date.parse(one.ends_at) > now)
@@ -221,7 +241,7 @@ function BoardView({ board, is_manager, onOpen }: { board: Board; is_manager: bo
       </ul>
 
       {/* desktop: timeline */}
-      <div className="court-timeline" style={{ ['--court-hour-count' as string]: hour_count }}>
+      <div ref={timeline_ref} className="court-timeline" style={{ ['--court-hour-count' as string]: hour_count }}>
         <div className="court-timeline__grid">
           <div className="court-timeline__head" aria-hidden>
             <div className="court-timeline__name">Court</div>

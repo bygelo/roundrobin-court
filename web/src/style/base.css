@@ -82,6 +82,7 @@ table { border-collapse: collapse; width: 100%; }
 .eyebrow { color: var(--accent); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: var(--space-2); }
 .muted { color: var(--muted); }
 .mono { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 0.9em; }
+.nowrap { white-space: nowrap; }
 .wordmark { color: var(--ink); font-family: var(--font-heading); font-weight: 700; font-size: 1.05rem; text-decoration: none; letter-spacing: -0.02em; }
 .wordmark span { color: var(--accent); }
 

@@ -55,13 +55,16 @@ export default function Page({ param }: PageProp) {
             />
           ) : (
             <>
-              {data.category.map((category) => (
-                <section key={category.category_name} className="shop-catalog__section" aria-labelledby={`shop-${category.category_name}`}>
-                  <h2 id={`shop-${category.category_name}`}>{category.category_name}</h2>
-                  <div className="grid">
-                    {category.product.map((product) => (
-                      <Card key={product.catalog_code} className="shop-catalog__card">
+              {/* One flowing grid, ordered by category, each card labelled with
+                  its category: a venue shop has a handful of items per shelf,
+                  and a section per shelf left one narrow card beside empty space. */}
+              <ul className="grid shop-catalog__grid" aria-label="Products" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {data.category.flatMap((category) =>
+                    category.product.map((product) => (
+                      <li key={product.catalog_code}>
+                      <Card className="shop-catalog__card">
                         <div className="stack" style={{ gap: 'var(--space-2)' }}>
+                          <p className="eyebrow">{category.category_name}</p>
                           <h3>{product.name}</h3>
                           {product.description && <p className="muted">{product.description}</p>}
                         </div>
@@ -91,10 +94,10 @@ export default function Page({ param }: PageProp) {
                           )}
                         </div>
                       </Card>
-                    ))}
-                  </div>
-                </section>
-              ))}
+                      </li>
+                    )),
+                )}
+              </ul>
               <p className="row muted">
                 <Storefront size={20} aria-hidden />
                 No online checkout — pick it up at the counter and pay there.
