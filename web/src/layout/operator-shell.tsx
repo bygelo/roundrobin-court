@@ -167,6 +167,9 @@ export function OperatorShell({ entry, children }: { entry?: PageEntry; children
             <Link to={`/v/${session.organization_code}`} className="nav-item">
               <Storefront size={20} aria-hidden /> Public site
             </Link>
+            <Link to="/operator/account" className={`nav-item ${path === '/operator/account' ? 'is-active' : ''}`}>
+              <UsersThree size={20} aria-hidden /> Your account
+            </Link>
             <button type="button" className="nav-item" onClick={signOut}>
               <SignOut size={20} aria-hidden /> Sign out {session.actor_code}
             </button>

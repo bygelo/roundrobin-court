@@ -43,6 +43,9 @@ export const PAGE: PageEntry[] = [
   { pattern: '/operator/module', surface: 'operator', title: 'Modules', module_code: 'admin', group: 'Admin', icon: 'module', component: lazy(() => import('./page/admin/module.tsx')) },
   { pattern: '/operator/developer', surface: 'operator', title: 'API and keys', module_code: 'admin', group: 'Admin', icon: 'developer', component: lazy(() => import('./page/admin/developer.tsx')) },
   { pattern: '/operator/data', surface: 'operator', title: 'Venue data', module_code: 'admin', group: 'Admin', icon: 'data', component: lazy(() => import('./page/admin/data.tsx')) },
+  // Every signed-in staff member, whatever their role: no module gate and no nav group
+  // (the console footer links it), so a scorer can change their own password.
+  { pattern: '/operator/account', surface: 'operator', title: 'Your account', component: lazy(() => import('./page/admin/account.tsx')) },
 
   // ---- public venue site -------------------------------------------------
   { pattern: '/v/:organization_code', surface: 'public', title: 'Book a court', module_code: 'portal', component: lazy(() => import('./page/portal/home.tsx')) },
