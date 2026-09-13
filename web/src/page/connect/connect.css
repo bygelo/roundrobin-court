@@ -1,0 +1,81 @@
+/* Connections — DUPR, webhooks, calendar feeds. Tokens only. */
+
+.connect-copy {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.connect-copy .input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.connect-explainer {
+  color: var(--body);
+  display: grid;
+  gap: var(--space-2);
+  max-width: 70ch;
+}
+.connect-explainer ul {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-5);
+}
+
+.connect-badge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.connect-url {
+  display: inline-block;
+  max-width: 32ch;
+  overflow-wrap: anywhere;
+}
+
+.connect-cell-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.connect-detail {
+  max-width: 44ch;
+  overflow-wrap: anywhere;
+}
+
+.connect-code {
+  background: var(--tint);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  padding: var(--space-4);
+  white-space: pre;
+}
+
+.connect-checkbox-grid {
+  display: grid;
+  gap: var(--space-1) var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
+}
+
+.connect-fieldset {
+  border: 0;
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+.connect-fieldset legend {
+  color: var(--ink);
+  font-size: 0.87rem;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}

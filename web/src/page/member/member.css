@@ -1,0 +1,9 @@
+/* Member lane: plan cards and the member table. */
+
+.member-plan { align-content: start; display: grid; gap: var(--space-3); }
+.member-plan__price { color: var(--ink); font-family: var(--font-heading); font-size: 1.5rem; font-variant-numeric: tabular-nums; font-weight: 700; }
+.member-plan__period { color: var(--muted); font-size: 0.9rem; font-weight: 500; }
+.member-plan__rule { color: var(--body); }
+
+.member-contact { color: var(--muted); font-size: 0.85rem; }
+.member-pass-count { font-variant-numeric: tabular-nums; font-weight: 600; }

@@ -1,0 +1,41 @@
+/* Insight — owner dashboard. Uses base.css tokens only. */
+
+.insight-range { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); }
+.insight-preset { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.insight-preset .button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.insight-custom { align-items: flex-end; display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.insight-custom .field { flex: 1 1 150px; max-width: 220px; }
+
+.insight-kpi { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); }
+.insight-kpi .stat { background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius-card); padding: var(--space-4); }
+.insight-kpi .stat__value { font-size: 1.5rem; }
+
+.insight-share { align-items: center; display: flex; gap: var(--space-2); min-width: 120px; }
+.insight-share__track { background: var(--tint); border-radius: var(--radius-pill); flex: 1; height: 8px; overflow: hidden; }
+.insight-share__fill { background: var(--accent); border-radius: var(--radius-pill); height: 100%; }
+.insight-share__label { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+.table tfoot td { border-top: 1.5px solid var(--line-strong); font-weight: 700; }
+
+.insight-court { display: grid; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
+.insight-court__row { display: grid; gap: var(--space-1); }
+.insight-court__head { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: space-between; }
+.insight-court__name { color: var(--ink); font-weight: 600; }
+.insight-court__figure { color: var(--muted); font-size: 0.87rem; font-variant-numeric: tabular-nums; }
+.insight-court__track { background: var(--tint); border-radius: var(--radius-pill); height: 12px; overflow: hidden; }
+.insight-court__fill { background: var(--accent); height: 100%; }
+
+.insight-chart { display: grid; gap: var(--space-3); }
+.insight-chart svg { display: block; height: auto; max-height: 260px; width: 100%; }
+.insight-chart__bar { fill: var(--accent); }
+.insight-chart__bar--negative { fill: var(--danger); }
+.insight-chart__axis { stroke: var(--line-strong); stroke-width: 1; }
+.insight-chart__label { fill: var(--muted); font-size: 11px; }
+.insight-chart .tabs { margin-bottom: 0; }
+
+.insight-alert { display: grid; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
+.insight-alert__row { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); justify-content: space-between; }
+
+.insight-download { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.insight-account summary { color: var(--accent); cursor: pointer; font-weight: 600; min-height: var(--control-sm); padding: var(--space-1) 0; }
+.insight-account summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.insight-account .table-wrap { margin-top: var(--space-3); }

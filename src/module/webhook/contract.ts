@@ -5,6 +5,7 @@
 // disabled. Must never throw for a delivery failure — delivery is async.
 
 import type { TenantContext } from '@bygelo/roundrobin-kernel'
+import { emitWebhookSafely } from './service.ts'
 
 export type WebhookEventCode =
   | 'booking.held'
@@ -22,4 +23,6 @@ export type EmitWebhookInput = {
   payload: Record<string, unknown>
 }
 
-export async function emitWebhook(_tenant: TenantContext, _input: EmitWebhookInput): Promise<void> {}
+export async function emitWebhook(tenant: TenantContext, input: EmitWebhookInput): Promise<void> {
+  await emitWebhookSafely(tenant, input)
+}

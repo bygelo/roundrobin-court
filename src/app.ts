@@ -4,7 +4,7 @@
 // any double-booking logic. Those live in the OS. The sport-specific surface —
 // rotation, score, sport profile, display, Studio, DUPR — lives in src/module/.
 
-import { createApp, type KernelApp, type ModuleDeclaration, type Store } from '@bygelo/roundrobin-kernel'
+import { KERNEL_MODULE, createApp, type KernelApp, type ModuleDeclaration, type Store } from '@bygelo/roundrobin-kernel'
 import { BILLING_MODULE, billingRoute } from '@bygelo/roundrobin-billing'
 import { BOOKING_MODULE, bookingRoute } from '@bygelo/roundrobin-booking'
 import { COMMERCE_MODULE, commerceRoute } from '@bygelo/roundrobin-commerce'
@@ -20,6 +20,9 @@ export { COURT_MODULE, SPORT_CATEGORY } from './module/court/index.ts'
 
 /** The OS packs this app composes. Each is removable; court's modules declare which they need. */
 export const PACK_DECLARATION: ModuleDeclaration[] = [
+  // The kernel's own API-key and export surfaces. Without this declaration no
+  // session can ever hold kernel.api_key.manage or kernel.export.
+  KERNEL_MODULE,
   BOOKING_MODULE,
   BILLING_MODULE,
   MEMBERSHIP_MODULE,

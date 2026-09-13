@@ -18,7 +18,7 @@
 
   --accent: #123fbd;
   --accent-tint: #e8edfb;
-  --action: #f32624;
+  --action: #d32522;
   --focus: #f4cf16;
 
   --success: #14783f;
@@ -225,7 +225,7 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .not-found { display: grid; min-height: 70vh; padding: var(--space-5); place-items: center; }
 
 /* ---- public venue site ------------------------------------------------- */
-.public { --accent: var(--brand-accent, #123fbd); --action: var(--brand-action, #f32624); display: flex; flex-direction: column; min-height: 100vh; }
+.public { --accent: var(--brand-accent, #123fbd); --action: var(--brand-action, #d32522); display: flex; flex-direction: column; min-height: 100vh; }
 .public h1, .public h2, .public .public__wordmark { font-family: var(--brand-heading, 'Space Grotesk'), 'Inter', sans-serif; }
 .public .button { border-radius: var(--brand-radius, 999px); }
 .public .button--primary { background: var(--action); }

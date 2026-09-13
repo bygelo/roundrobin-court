@@ -1,7 +1,9 @@
-// Seed step for the insight module. STUB — the insight lane fills it in.
+// Seed step for the insight module.
 //
-// Runs inside withTenant for the demo venue, after every module is enabled and
-// after the steps listed before it in script/seed/index.ts.
+// Deliberately writes nothing. Insight is a report: every figure is derived
+// from the bookings, payments, orders, and deliveries the other seed steps
+// create, so seeding "insight data" would mean fabricating numbers that do not
+// reconcile to any record. A demo venue with no bookings shows the empty state.
 
 import type { SeedContext } from './context.ts'
 

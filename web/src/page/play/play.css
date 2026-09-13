@@ -1,0 +1,66 @@
+/* Open play — operator console and the live /play/:token board. */
+
+/* ---- operator ------------------------------------------------------------ */
+.play-layout { display: grid; gap: var(--space-5); grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1100px) { .play-layout { grid-template-columns: 1fr; } }
+
+.play-session-list { display: grid; gap: var(--space-2); }
+.play-session-list__group { color: var(--muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; margin-top: var(--space-2); text-transform: uppercase; }
+.play-session-item {
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius-card); display: grid; gap: var(--space-1);
+  padding: var(--space-3) var(--space-4); text-align: left; width: 100%;
+}
+.play-session-item:hover { border-color: var(--line-strong); }
+.play-session-item.is-active { background: var(--accent-tint); border-color: var(--accent); }
+.play-session-item__name { color: var(--ink); font-weight: 700; }
+.play-session-item__meta { color: var(--muted); font-size: 0.85rem; }
+
+.play-console { display: grid; gap: var(--space-5); min-width: 0; }
+.play-console__head { display: flex; flex-wrap: wrap; gap: var(--space-4); justify-content: space-between; align-items: flex-start; }
+.play-console__title { display: grid; gap: var(--space-2); }
+.play-console__action { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.play-stat-row { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+
+.play-court-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
+.play-court { background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius-card); display: grid; gap: var(--space-3); padding: var(--space-4); align-content: start; }
+.play-court--free { background: transparent; border-style: dashed; }
+.play-court__head { align-items: center; display: flex; gap: var(--space-2); justify-content: space-between; }
+.play-court__name { color: var(--ink); font-family: var(--font-heading); font-size: 1.05rem; font-weight: 700; }
+.play-team { color: var(--ink); display: grid; font-weight: 600; gap: 2px; }
+.play-versus { color: var(--muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.play-timer { align-items: center; color: var(--muted); display: inline-flex; font-variant-numeric: tabular-nums; gap: var(--space-1); font-weight: 600; }
+
+.play-queue { display: grid; gap: 0; list-style: none; margin: 0; padding: 0; }
+.play-queue li { align-items: center; border-top: 1px solid var(--line); display: flex; gap: var(--space-3); padding: var(--space-2) 0; }
+.play-queue li:first-child { border-top: 0; }
+.play-position { background: var(--tint); border-radius: var(--radius-pill); color: var(--ink); display: grid; flex: none; font-size: 0.85rem; font-weight: 700; height: 28px; place-items: center; width: 28px; }
+.play-queue li.is-next .play-position { background: var(--accent); color: #fff; }
+
+.play-share__code { color: var(--ink); font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.25em; }
+.play-share__link { word-break: break-all; }
+
+.play-court-choice { border: 0; display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); margin: 0; padding: 0; }
+.play-court-choice legend { color: var(--ink); font-size: 0.87rem; font-weight: 600; margin-bottom: var(--space-2); }
+.play-row-action { display: flex; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; }
+
+/* ---- live board (phone and TV) ------------------------------------------- */
+.play-live { background: var(--paper); min-height: 100vh; }
+.play-live__band { background: var(--ink); color: var(--paper); }
+.play-live__band-inner, .play-live__inner { margin: 0 auto; max-width: 1600px; padding: clamp(var(--space-4), 3vw, var(--space-7)); }
+.play-live__band h1 { color: var(--paper); font-size: clamp(1.8rem, 1rem + 3vw, 3.6rem); }
+.play-live__band .eyebrow { color: var(--focus); }
+.play-live__meta { align-items: center; display: flex; flex-wrap: wrap; font-size: clamp(1rem, 0.85rem + 0.6vw, 1.4rem); gap: var(--space-3); margin-top: var(--space-2); }
+.play-live__split { display: grid; gap: clamp(var(--space-4), 2vw, var(--space-6)); grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); align-items: start; }
+@media (max-width: 900px) { .play-live__split { grid-template-columns: 1fr; } }
+.play-live__heading { font-size: clamp(1.2rem, 0.9rem + 1vw, 2rem); margin-bottom: var(--space-3); }
+.play-live__court-grid { display: grid; gap: clamp(var(--space-3), 1.5vw, var(--space-5)); grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.play-live__court { background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius-card); display: grid; gap: var(--space-3); padding: clamp(var(--space-4), 1.5vw, var(--space-5)); }
+.play-live__court--free { background: transparent; border-style: dashed; }
+.play-live__court-name { align-items: center; color: var(--accent); display: flex; font-family: var(--font-heading); font-size: clamp(1rem, 0.8rem + 0.8vw, 1.5rem); font-weight: 700; justify-content: space-between; gap: var(--space-2); }
+.play-live__player { color: var(--ink); font-size: clamp(1.15rem, 0.9rem + 1.2vw, 2.1rem); font-weight: 700; line-height: 1.2; }
+.play-live__up-next { display: grid; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.play-live__up-next li { align-items: center; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius-card); color: var(--ink); display: flex; font-size: clamp(1.1rem, 0.9rem + 1vw, 1.9rem); font-weight: 700; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.play-live__up-next .play-position { font-size: clamp(0.85rem, 0.7rem + 0.5vw, 1.2rem); height: clamp(28px, 2vw + 16px, 44px); width: clamp(28px, 2vw + 16px, 44px); }
+.play-live__count { color: var(--ink); font-family: var(--font-heading); font-size: clamp(2rem, 1.4rem + 2vw, 3.5rem); font-weight: 700; line-height: 1; }
+.play-live .is-you { background: var(--caution-tint); border-radius: var(--radius-field); box-shadow: 0 0 0 3px var(--focus); }
+.play-live__foot { color: var(--muted); font-size: 0.9rem; max-width: 90ch; }

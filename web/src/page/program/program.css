@@ -1,0 +1,56 @@
+/* Program screens — operator schedule and the public program page. */
+
+.program-week { display: grid; gap: var(--space-2); }
+.program-week__label { color: var(--muted); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.program-slot {
+  align-items: center; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius-card);
+  color: inherit; cursor: pointer; display: grid; font: inherit; gap: var(--space-2) var(--space-4);
+  grid-template-columns: 116px minmax(0, 1fr) 180px; padding: var(--space-3) var(--space-4); text-align: left; width: 100%;
+}
+.program-slot:hover { border-color: var(--line-strong); }
+.program-slot.is-selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.program-slot.is-cancelled { opacity: 0.7; }
+.program-slot__when { display: grid; gap: 2px; }
+.program-slot__when strong { color: var(--ink); }
+.program-slot__title { color: var(--ink); font-weight: 600; }
+.program-slot__meta { color: var(--muted); font-size: 0.87rem; }
+
+.fill-meter { display: grid; gap: var(--space-1); }
+.fill-meter__bar { background: var(--tint); border-radius: var(--radius-pill); height: 8px; overflow: hidden; }
+.fill-meter__value { background: var(--accent); border-radius: var(--radius-pill); height: 100%; }
+.fill-meter__value.is-full { background: var(--caution); }
+.fill-meter__label { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+.weekday-picker { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.weekday-picker .checkbox { border: 1.5px solid var(--line-strong); border-radius: var(--radius-pill); padding: 0 var(--space-3); }
+.chip-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chip { align-items: center; background: var(--tint); border-radius: var(--radius-pill); display: inline-flex; font-size: 0.87rem; gap: var(--space-1); padding: 2px 2px 2px var(--space-3); }
+.chip button { background: none; border: 0; border-radius: var(--radius-pill); color: var(--muted); display: grid; height: 28px; place-items: center; width: 28px; }
+.chip button:hover { background: var(--line); color: var(--ink); }
+.fieldset { border: 1.5px solid var(--line); border-radius: var(--radius-card); display: grid; gap: var(--space-3); padding: var(--space-4); }
+.fieldset legend { color: var(--ink); font-weight: 600; padding: 0 var(--space-2); }
+
+.program-detail { align-self: start; position: sticky; top: 76px; }
+.registration-list { display: grid; gap: var(--space-2); }
+.registration-row { align-items: center; border-top: 1px solid var(--line); display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) auto; padding-top: var(--space-2); }
+.registration-row__name { color: var(--ink); font-weight: 600; }
+.registration-row__contact { color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
+
+/* public */
+.program-hero { display: grid; gap: var(--space-2); margin-bottom: var(--space-5); }
+.program-card { display: grid; gap: var(--space-3); grid-template-rows: auto 1fr auto; }
+.program-card__date { color: var(--accent); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.program-card__title { font-size: 1.2rem; }
+.program-card__foot { align-items: center; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; padding-top: var(--space-3); }
+.program-card__price { color: var(--ink); font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; }
+.waiver-text { background: var(--tint); border-radius: var(--radius-field); max-height: 200px; overflow-y: auto; padding: var(--space-3) var(--space-4); white-space: pre-wrap; font-size: 0.9rem; }
+.credential-box { align-items: center; background: var(--tint); border: 1.5px dashed var(--line-strong); border-radius: var(--radius-field); display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; padding: var(--space-3) var(--space-4); }
+.credential-box code { color: var(--ink); font-size: 1rem; overflow-wrap: anywhere; }
+.check-in-qr { background: #fff; border-radius: var(--radius-field); justify-self: center; padding: var(--space-3); width: min(220px, 70vw); }
+.check-in-qr svg { display: block; height: auto; width: 100%; }
+
+@media (max-width: 720px) {
+  .program-slot { grid-template-columns: 1fr; }
+  .program-detail { position: static; }
+}

@@ -40,7 +40,8 @@ export function defaultSite(organization_code: string): PublicSite {
     display_name: titleCase(organization_code),
     tagline: null,
     template_code: 'club',
-    token: { accent: '#123fbd', action: '#f32624', heading_font: 'Space Grotesk', radius: 'round' },
+    // #d32522 rather than Sideout's #f32624: white text on the latter is 4.1:1, below AA.
+    token: { accent: '#123fbd', action: '#d32522', heading_font: 'Space Grotesk', radius: 'round' },
     content: {
       hero_title: 'Book a court',
       hero_body: 'Pick a time, hold your court, and pay at the counter or online.',

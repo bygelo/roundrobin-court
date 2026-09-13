@@ -1,0 +1,104 @@
+/* Displays. The TV (/display) takes the court-dark palette from base.css via
+   the .public--court-dark class, so every colour below is a token. Type is
+   sized in vw so the same screen reads on a 32" lounge TV and a 65" wall. */
+
+/* ---- operator page ------------------------------------------------------- */
+.display-admin__note { padding: var(--space-3) var(--space-4); }
+.display-enrol { align-items: center; display: flex; gap: var(--space-4); }
+.display-enrol svg { color: var(--accent); flex: none; }
+.display-enrol__link { align-items: flex-end; display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) auto; }
+.display-enrol__link .input { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 0.85rem; }
+.display-enrol__step { display: grid; gap: var(--space-2); margin: 0; padding-left: var(--space-5); }
+@media (max-width: 520px) { .display-enrol__link { grid-template-columns: 1fr; } }
+
+/* ---- the TV -------------------------------------------------------------- */
+.tv { color: var(--body); display: grid; gap: clamp(12px, 1.6vw, 28px); grid-template-rows: auto auto 1fr auto; min-height: 100vh; overflow: hidden; padding: clamp(16px, 2.4vw, 48px); }
+.tv h1, .tv h2, .tv h3 { color: var(--ink); }
+.tv--message { align-content: center; gap: var(--space-4); grid-template-rows: none; justify-items: start; padding: clamp(32px, 8vw, 140px); }
+.tv--message svg { color: var(--muted); }
+.tv--message h1 { font-size: clamp(2.2rem, 5.5vw, 5.5rem); letter-spacing: -0.03em; max-width: 18ch; }
+.tv--message p { color: var(--muted); font-size: clamp(1.1rem, 2vw, 2rem); max-width: 42ch; }
+
+.tv__header { align-items: center; display: flex; gap: var(--space-5); justify-content: space-between; }
+.tv__venue { color: var(--muted); font-size: clamp(0.9rem, 1.3vw, 1.6rem); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.tv__label { color: var(--ink); font-family: var(--font-heading); font-size: clamp(1.8rem, 3.6vw, 4.2rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; }
+.tv__clock { color: var(--ink); font-family: var(--font-heading); font-size: clamp(2rem, 4.2vw, 5rem); font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.tv__offline {
+  align-items: center; background: var(--caution-tint); border-radius: var(--radius-card); color: var(--caution); display: flex;
+  font-size: clamp(1.2rem, 2.4vw, 2.8rem); font-weight: 700; gap: var(--space-4); padding: clamp(10px, 1.2vw, 20px) clamp(16px, 2vw, 32px);
+}
+.tv.is-stale .tv__body { opacity: 0.55; }
+.tv__body { min-height: 0; }
+.tv__footer { color: var(--muted); display: flex; font-size: clamp(0.8rem, 1vw, 1.2rem); justify-content: space-between; }
+.tv__empty { color: var(--muted); font-size: clamp(1.1rem, 1.8vw, 2rem); }
+
+/* score blocks */
+.tv-score { display: grid; gap: clamp(8px, 1vw, 16px); }
+.tv-score__team {
+  align-items: center; background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius-card);
+  column-gap: var(--space-4); display: grid; grid-template-areas: 'name point' 'games point' 'serve point'; grid-template-columns: minmax(0, 1fr) auto;
+  padding: clamp(8px, 1vw, 18px) clamp(12px, 1.4vw, 24px);
+}
+.tv-score__team.is-serving { border-color: var(--action); box-shadow: inset 8px 0 0 var(--action); }
+.tv-score__team.is-winner { border-color: var(--success); }
+.tv-score__name { color: var(--ink); font-size: clamp(1rem, 1.6vw, 2rem); font-weight: 700; grid-area: name; line-height: 1.15; overflow-wrap: anywhere; }
+.tv-score__games { color: var(--muted); font-size: clamp(0.8rem, 1.1vw, 1.3rem); font-weight: 600; grid-area: games; }
+.tv-score__serve { color: var(--action); font-size: clamp(0.8rem, 1.1vw, 1.3rem); font-weight: 700; grid-area: serve; letter-spacing: 0.04em; text-transform: uppercase; }
+.tv-score__point { color: var(--ink); font-family: var(--font-heading); font-size: clamp(2.4rem, 4.5vw, 5.5rem); font-variant-numeric: tabular-nums; font-weight: 700; grid-area: point; line-height: 1; }
+
+.tv-score--large { gap: clamp(12px, 1.6vw, 28px); }
+.tv-score--large .tv-score__team { padding: clamp(16px, 2.2vw, 40px) clamp(20px, 3vw, 56px); }
+.tv-score--large .tv-score__name { font-size: clamp(1.6rem, 3.4vw, 4.4rem); }
+.tv-score--large .tv-score__games, .tv-score--large .tv-score__serve { font-size: clamp(1rem, 1.8vw, 2.2rem); }
+.tv-score--large .tv-score__point { font-size: clamp(5rem, 13vw, 15rem); }
+
+/* court */
+.tv-court { align-content: center; display: grid; gap: clamp(12px, 1.6vw, 28px); height: 100%; }
+.tv-court__headline { color: var(--ink); font-size: clamp(1.4rem, 2.8vw, 3.4rem); font-weight: 700; }
+.tv-court__history { color: var(--muted); font-size: clamp(1.1rem, 2vw, 2.4rem); font-variant-numeric: tabular-nums; font-weight: 600; }
+.tv-court__idle h1 { font-size: clamp(4rem, 12vw, 14rem); letter-spacing: -0.04em; line-height: 0.95; }
+.tv-court__idle p { color: var(--muted); font-size: clamp(1.4rem, 3vw, 3.6rem); }
+.tv-court__booking { color: var(--ink); font-size: clamp(1.4rem, 2.8vw, 3.4rem); font-weight: 600; }
+
+/* lounge */
+.tv-lounge { display: grid; gap: clamp(12px, 1.6vw, 28px); grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); height: 100%; }
+.tv-lounge__court { align-content: start; display: grid; gap: clamp(10px, 1.2vw, 20px); grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); }
+.tv-tile { background: var(--tint); border-radius: var(--radius-card); display: grid; gap: clamp(8px, 0.8vw, 14px); padding: clamp(12px, 1.4vw, 24px); }
+.tv-tile.is-live { box-shadow: inset 0 6px 0 var(--action); }
+.tv-tile__header { align-items: baseline; display: flex; justify-content: space-between; }
+.tv-tile__header h2 { font-size: clamp(1.3rem, 2.2vw, 2.6rem); }
+.tv-tile__header span { color: var(--muted); font-size: clamp(0.9rem, 1.2vw, 1.4rem); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.tv-tile.is-live .tv-tile__header span { color: var(--action); }
+.tv-tile__idle { color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.9rem); }
+.tv-tile__booking { color: var(--body); font-size: clamp(0.9rem, 1.3vw, 1.6rem); font-weight: 600; }
+.tv-lounge__play { align-content: start; background: var(--surface); border-radius: var(--radius-card); display: grid; gap: clamp(10px, 1.2vw, 20px); padding: clamp(14px, 1.6vw, 28px); }
+.tv-lounge__play > h2 { font-size: clamp(1.4rem, 2.4vw, 2.8rem); }
+.tv-play { border-top: 2px solid var(--line); display: grid; gap: var(--space-2); padding-top: clamp(8px, 1vw, 16px); }
+.tv-play h3 { font-size: clamp(1.1rem, 1.8vw, 2.1rem); }
+.tv-play__time { color: var(--muted); font-size: clamp(0.9rem, 1.3vw, 1.5rem); font-weight: 600; }
+.tv-play__court { font-size: clamp(0.95rem, 1.4vw, 1.7rem); }
+.tv-play__court strong { color: var(--ink); margin-right: var(--space-2); }
+.tv-play__next { display: grid; font-size: clamp(0.95rem, 1.4vw, 1.7rem); gap: var(--space-1); }
+.tv-play__next strong { color: var(--action); font-size: 0.8em; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* counter */
+.tv-counter { display: grid; gap: clamp(16px, 2vw, 36px); grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); height: 100%; }
+.tv-counter__slot { align-content: start; display: grid; gap: clamp(12px, 1.4vw, 24px); }
+.tv-counter__slot h1 { font-size: clamp(2rem, 4.4vw, 5.4rem); letter-spacing: -0.03em; }
+.tv-counter__slot ul { display: grid; gap: clamp(8px, 1vw, 16px); list-style: none; margin: 0; padding: 0; }
+.tv-counter__slot li { align-items: center; background: var(--surface); border-radius: var(--radius-card); display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; padding: clamp(12px, 1.4vw, 24px) clamp(16px, 2vw, 32px); }
+.tv-counter__time { color: var(--ink); font-family: var(--font-heading); font-size: clamp(1.4rem, 2.6vw, 3.2rem); font-variant-numeric: tabular-nums; font-weight: 700; }
+.tv-counter__court { color: var(--ink); display: grid; font-size: clamp(1.2rem, 2vw, 2.4rem); font-weight: 700; }
+.tv-counter__court small { color: var(--muted); font-size: 0.6em; font-weight: 600; }
+.tv-counter__price { color: var(--body); font-size: clamp(1.1rem, 1.8vw, 2.2rem); font-weight: 600; }
+.tv-counter__stat { align-content: start; display: grid; gap: clamp(10px, 1.2vw, 20px); }
+.tv-counter__stat div { background: var(--tint); border-radius: var(--radius-card); display: grid; padding: clamp(14px, 1.6vw, 28px); }
+.tv-counter__stat strong { color: var(--ink); font-family: var(--font-heading); font-size: clamp(2.6rem, 5.4vw, 6.4rem); font-variant-numeric: tabular-nums; line-height: 1; }
+.tv-counter__stat span { color: var(--muted); font-size: clamp(1rem, 1.5vw, 1.8rem); font-weight: 600; }
+
+@media (max-width: 900px) {
+  .tv { overflow: visible; }
+  .tv-lounge, .tv-counter { grid-template-columns: 1fr; }
+  .tv-counter__slot li { grid-template-columns: 1fr; gap: var(--space-1); }
+}

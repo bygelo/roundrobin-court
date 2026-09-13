@@ -1,8 +1,25 @@
-// Seed step for the admin module. STUB — the admin lane fills it in.
+// Seed step for the admin module: the five preset roles and two demo staff.
 //
-// Runs inside withTenant for the demo venue, after every module is enabled and
-// after the steps listed before it in script/seed/index.ts.
+//   desk   / correct-horse — Front desk
+//   scorer / correct-horse — Scorer
+//
+// Idempotent: roles are upserted and synced; an existing staff code is left alone.
 
+import { createActor, type Uuid } from '@bygelo/roundrobin-kernel'
+import { ensureRolePreset } from '../../src/module/admin/role.ts'
 import type { SeedContext } from './context.ts'
 
-export async function seedAdmin(_context: SeedContext): Promise<void> {}
+const DEMO_STAFF = [
+  { actor_code: 'desk', display_name: 'Maria Santos', role_code: 'front_desk' },
+  { actor_code: 'scorer', display_name: 'Jun Reyes', role_code: 'scorer' },
+] as const
+
+export async function seedAdmin({ tenant, organization_id }: SeedContext): Promise<void> {
+  await ensureRolePreset(tenant)
+  for (const one of DEMO_STAFF) {
+    const [existing] = await tenant.query<{ actor_id: Uuid }[]>`
+      SELECT actor_id FROM actor WHERE organization_id = ${organization_id} AND actor_code = ${one.actor_code}`
+    if (existing) continue
+    await createActor(tenant, { ...one, secret: 'correct-horse' })
+  }
+}

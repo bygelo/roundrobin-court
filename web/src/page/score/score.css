@@ -1,0 +1,51 @@
+/* Operator → Scoring. The scorer is tuned for a 768px tablet held at the court:
+   two tap targets that fill the width, a call-out you can read at arm's length. */
+
+.score-board__team { display: grid; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.score-board__team li { align-items: center; border-left: 4px solid transparent; display: flex; gap: var(--space-3); justify-content: space-between; padding-left: var(--space-2); }
+.score-board__team li.is-serving { border-left-color: var(--action); }
+.score-board__team strong { color: var(--ink); font-family: var(--font-heading); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.score-winner { color: var(--ink); font-weight: 700; }
+.score-fieldset { border: 1.5px solid var(--line); border-radius: var(--radius-field); display: grid; gap: var(--space-3); margin: 0; padding: var(--space-3) var(--space-4) var(--space-4); }
+.score-fieldset legend { color: var(--ink); font-weight: 700; padding: 0 var(--space-2); }
+.score-history { display: grid; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
+
+.scorer { display: grid; gap: var(--space-4); margin: 0 auto; max-width: 980px; }
+.scorer__top { margin-bottom: calc(var(--space-2) * -1); }
+.scorer__header h1 { font-size: clamp(1.5rem, 1.1rem + 1.5vw, 2rem); }
+
+.scorer__call { align-items: baseline; background: var(--ink); border-radius: var(--radius-card); color: var(--paper); display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: var(--space-4) var(--space-5); }
+.scorer__call-label { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; opacity: 0.7; text-transform: uppercase; }
+.scorer__call-value { font-family: var(--font-heading); font-size: clamp(2.4rem, 1.4rem + 5vw, 4.2rem); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.scorer__call-headline { flex-basis: 100%; font-weight: 600; opacity: 0.85; }
+
+.scorer__court { display: grid; gap: var(--space-3); grid-template-columns: 1fr 1fr; }
+.scorer__team {
+  align-content: start; background: var(--surface); border: 3px solid var(--line-strong); border-radius: var(--radius-card); color: var(--body);
+  display: grid; gap: var(--space-2); justify-items: center; min-height: clamp(260px, 42vh, 420px); padding: var(--space-5) var(--space-3);
+  text-align: center; touch-action: manipulation; transition: background var(--motion), border-color var(--motion), transform var(--motion);
+  user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.scorer__team:not(:disabled):hover { background: var(--accent-tint); border-color: var(--accent); }
+.scorer__team:not(:disabled):active { transform: scale(0.98); }
+.scorer__team:disabled { cursor: default; opacity: 1; }
+.scorer__team.is-serving { border-color: var(--action); box-shadow: inset 0 6px 0 var(--action); }
+.scorer__team.is-winner { background: var(--success-tint); border-color: var(--success); }
+.scorer__team-name { color: var(--ink); font-size: clamp(1rem, 0.85rem + 0.8vw, 1.35rem); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.scorer__point { color: var(--ink); font-family: var(--font-heading); font-size: clamp(5rem, 2rem + 14vw, 10rem); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -0.04em; line-height: 0.95; }
+.scorer__meta { color: var(--muted); font-weight: 600; }
+.scorer__serve { background: var(--action); border-radius: var(--radius-pill); color: #fff; font-size: 0.87rem; font-weight: 700; padding: var(--space-1) var(--space-3); }
+.scorer__serve--idle { background: var(--tint); color: var(--muted); }
+.scorer__hint { color: var(--muted); font-size: 0.82rem; }
+
+.scorer__history { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.scorer__history li { background: var(--tint); border-radius: var(--radius-pill); font-size: 0.87rem; font-weight: 600; padding: var(--space-1) var(--space-3); }
+
+.scorer__control { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.scorer__control .button--lg { min-height: 60px; }
+
+@media (max-width: 520px) {
+  .scorer__team { min-height: 220px; padding: var(--space-4) var(--space-2); }
+  .scorer__hint { display: none; }
+  .scorer__control .button { flex: 1 1 auto; padding: 0 var(--space-3); }
+}

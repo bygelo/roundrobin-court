@@ -1,8 +1,21 @@
-// Seed step for the webhook module. STUB — the webhook lane fills it in.
-//
-// Runs inside withTenant for the demo venue, after every module is enabled and
-// after the steps listed before it in script/seed/index.ts.
+// Seed step for the webhook module: one paused subscription pointing at a local
+// receiver, so the Webhooks tab has something real to show. Its signing secret
+// is discarded — rotate it from the UI to see one.
 
+import { createSubscription } from '../../src/module/webhook/service.ts'
 import type { SeedContext } from './context.ts'
 
-export async function seedWebhook(_context: SeedContext): Promise<void> {}
+const DEMO_URL = 'http://localhost:8899/hook'
+
+export async function seedWebhook({ tenant, organization_id }: SeedContext): Promise<void> {
+  const [existing] = await tenant.query<{ webhook_subscription_id: string }[]>`
+    SELECT webhook_subscription_id FROM webhook_subscription
+    WHERE organization_id = ${organization_id} AND url = ${DEMO_URL} AND deleted_at IS NULL`
+  if (existing) return
+  await createSubscription(tenant, {
+    url: DEMO_URL,
+    event_code: ['booking.confirmed'],
+    description: 'Demo receiver on this machine (paused)',
+    is_active: false,
+  })
+}

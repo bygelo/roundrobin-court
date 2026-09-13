@@ -9,6 +9,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { createStore, registerModule, withOwner } from '@bygelo/roundrobin-kernel'
 import { COURT_DECLARATION, createCourtApp } from './app.ts'
+import { startWorker } from './worker.ts'
 
 const database_url = process.env['DATABASE_URL']
 if (!database_url) {
@@ -84,3 +85,8 @@ app.get('/*', async (context) => {
 const port = Number(process.env['PORT'] ?? 8787)
 serve({ fetch: app.fetch, port })
 console.log(`roundrobin court listening on http://localhost:${port}`)
+
+if (process.env['COURT_WORKER'] !== 'off') {
+  startWorker(store)
+  console.log('background worker on: webhook delivery, message outbox, hold sweep, reminders, schedule horizon')
+}
