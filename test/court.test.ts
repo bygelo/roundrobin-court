@@ -1,10 +1,10 @@
-// The court app, running on roundrobbin OS from the published packages.
+// The court app, running on roundrobin OS from the published packages.
 //
 // This is the test that answers the only question that matters about the OS:
 // can an app that was NOT the one the kernel was written against actually run
 // on it, without editing a kernel file?
 //
-// It installs @bygelo/roundrobbin-kernel and @bygelo/roundrobbin-booking from
+// It installs @bygelo/roundrobin-kernel and @bygelo/roundrobin-booking from
 // the registry, adds this app's own migration and module, and books a court.
 
 import assert from 'node:assert/strict'
@@ -18,12 +18,12 @@ import {
   withTenant,
   type Store,
   type Uuid,
-} from '@bygelo/roundrobbin-kernel'
+} from '@bygelo/roundrobin-kernel'
 import { COURT_DECLARATION, SPORT_CATEGORY, createCourtApp } from '../src/app.ts'
 
 const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL']
 
-describe('the court app on roundrobbin OS', { skip: !TEST_DATABASE_URL }, () => {
+describe('the court app on roundrobin OS', { skip: !TEST_DATABASE_URL }, () => {
   let store: Store
   let organization_id: Uuid
   let session_id: Uuid
@@ -44,7 +44,7 @@ describe('the court app on roundrobbin OS', { skip: !TEST_DATABASE_URL }, () => 
     await withTenant(store, organization_id, async (tenant) => {
       // enableModule is exercised by the OS's own suite; here we assert the app
       // can turn its modules on in dependency order without special-casing.
-      const { enableModule } = await import('@bygelo/roundrobbin-kernel')
+      const { enableModule } = await import('@bygelo/roundrobin-kernel')
       await enableModule(tenant, 'booking', COURT_DECLARATION)
       await enableModule(tenant, 'court', COURT_DECLARATION)
 
@@ -111,7 +111,7 @@ describe('the court app on roundrobbin OS', { skip: !TEST_DATABASE_URL }, () => 
     await withOwner(store, 'create tenant', async (owner) => {
       await owner.query`DELETE FROM organization WHERE organization_id = ${organization_id}`
     })
-    await store.end()
+    await store.close()
   })
 
   const request = (path: string, init: RequestInit = {}) =>

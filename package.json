@@ -1,28 +1,49 @@
 {
-  "name": "roundrobbin-court",
+  "name": "roundrobin-court",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Multi-sport venue booking. The first app on roundrobbin OS.",
+  "description": "Multi-sport venue booking. The first app on roundrobin OS.",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json",
     "db:migrate": "node script/migrate.ts",
+    "db:role": "node script/app-role.ts",
+    "seed": "node script/seed.ts",
     "dev": "node src/server.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build": "vite build --config web/vite.config.ts",
     "test": "node --test \"test/**/*.test.ts\"",
-    "gate": "npm run typecheck && npm test"
+    "gate": "npm run typecheck && npm run build && npm test"
   },
   "dependencies": {
-    "@bygelo/roundrobbin-booking": "^0.3.1",
-    "@bygelo/roundrobbin-kernel": "^0.3.0",
+    "@bygelo/roundrobin-billing": "file:../roundrobin/package/billing",
+    "@bygelo/roundrobin-booking": "file:../roundrobin/package/booking",
+    "@bygelo/roundrobin-commerce": "file:../roundrobin/package/commerce",
+    "@bygelo/roundrobin-connector": "file:../roundrobin/package/connector",
+    "@bygelo/roundrobin-consent": "file:../roundrobin/package/consent",
+    "@bygelo/roundrobin-kernel": "file:../roundrobin/package/kernel",
+    "@bygelo/roundrobin-membership": "file:../roundrobin/package/membership",
+    "@bygelo/roundrobin-notification": "file:../roundrobin/package/notification",
+    "@bygelo/roundrobin-output": "file:../roundrobin/package/output",
+    "@bygelo/roundrobin-scan": "file:../roundrobin/package/scan",
     "@hono/node-server": "^2.1.0",
     "hono": "^4.13.1",
     "postgres": "^3.4.7"
   },
   "devDependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@types/node": "^24.10.0",
-    "typescript": "^5.9.3"
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.2"
   }
 }

@@ -1,6 +1,6 @@
-# roundrobbin court
+# roundrobin court
 
-A multi-sport venue booking product — pickleball, tennis, badminton, and padel. The first app built on [roundrobbin OS](https://github.com/bygelo/roundrobbin).
+A multi-sport venue booking product — pickleball, tennis, badminton, and padel. The first app built on [roundrobin OS](https://github.com/bygelo/roundrobin).
 
 Every booking system has a calendar. Almost none has a defensible **fair-rotation engine** — the thing that decides who plays next, on which court, with whom, and does it fairly. Venues run that on whiteboards and group chats today. That is this product's wedge, and it is why it is called round robin.
 
@@ -10,8 +10,8 @@ This repo owns pickleball. The OS owns booking.
 
 | Concern | Lives in |
 |---|---|
-| tenant, scope, party, actor, role, module registry, audit, events | `@bygelo/roundrobbin-kernel` |
-| site, resource, session, closure, booking, the no-double-booking guarantee | `@bygelo/roundrobbin-booking` |
+| tenant, scope, party, actor, role, module registry, audit, events | `@bygelo/roundrobin-kernel` |
+| site, resource, session, closure, booking, the no-double-booking guarantee | `@bygelo/roundrobin-booking` |
 | sport profile, rotation engine, score, DUPR, display, venue vocabulary | **here** |
 
 The OS knows about a `resource` with a `resource_category`. It has never heard of a court. This repo supplies "pickleball court" as data and owns every rule that is genuinely sport-specific — which, after analysis, is essentially just **scoring**. That is what R08 exists to prove.
@@ -20,7 +20,7 @@ A kernel or pack change made *because of this app* is a finding, not a feature. 
 
 ## Status
 
-**Running on the OS.** The app installs `@bygelo/roundrobbin-kernel` and `@bygelo/roundrobbin-booking` from GitHub Packages, applies six migrations in dependency order (kernel → booking → court), serves its own court-board route, books a court through the OS booking pack, and **gets a 409 on the second booking of the same slot** — a guarantee it inherited rather than wrote.
+**Running on the OS.** The app installs `@bygelo/roundrobin-kernel` and `@bygelo/roundrobin-booking` from GitHub Packages, applies six migrations in dependency order (kernel → booking → court), serves its own court-board route, books a court through the OS booking pack, and **gets a 409 on the second booking of the same slot** — a guarantee it inherited rather than wrote.
 
 Gate: `typecheck 0 · test 3/3`.
 
@@ -36,8 +36,8 @@ Requires Node 24+ and PostgreSQL 16+. The packages are private, so npm needs a G
 "@bygelo:registry=https://npm.pkg.github.com" | Set-Content .npmrc
 "//npm.pkg.github.com/:_authToken=$(gh auth token)" | Add-Content .npmrc
 npm install
-& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -c "CREATE DATABASE roundrobbin_court;"
-$env:DATABASE_URL = 'postgres://postgres@localhost:5432/roundrobbin_court'
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -c "CREATE DATABASE roundrobin_court;"
+$env:DATABASE_URL = 'postgres://postgres@localhost:5432/roundrobin_court'
 npm run db:migrate
 npm run dev
 ```
@@ -47,7 +47,7 @@ npm run dev
 ## Verify
 
 ```powershell
-$env:TEST_DATABASE_URL = 'postgres://postgres@localhost:5432/roundrobbin_court'
+$env:TEST_DATABASE_URL = 'postgres://postgres@localhost:5432/roundrobin_court'
 npm run gate
 ```
 

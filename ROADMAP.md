@@ -1,13 +1,13 @@
-﻿# roundrobbin court — product roadmap
+﻿# roundrobin court — product roadmap
 
-**Moved 2026-08-08.** This roadmap was written for a repo named `roundrobbin` that was then a sports product. That repo became [roundrobbin OS](https://github.com/bygelo/roundrobbin) — an application kernel and domain packs serving several apps. The sports product moved here with its 30 items unchanged.
+**Moved 2026-08-08.** This roadmap was written for a repo named `roundrobin` that was then a sports product. That repo became [roundrobin OS](https://github.com/bygelo/roundrobin) — an application kernel and domain packs serving several apps. The sports product moved here with its 30 items unchanged.
 
 Two rows below are now the OS's responsibility and should be read as delegated, not dropped:
 
 - **R02 (typed schema and gapless migration runner)** — shipped in the OS as its package-scoped migration runner. Green.
 - **R03 (module registry)** — shipped in the OS as `package/kernel`'s module tables plus a boundary linter that fails the gate on a cross-package table read. Its runtime is OS item K08.
 
-Likewise the booking core (R05) now sits on `@bygelo/roundrobbin-booking`, whose schema already enforces the no-double-booking guarantee with a PostgreSQL `EXCLUDE USING gist` constraint. R05's remaining work here is the runtime and the venue-facing surface, not the invariant.
+Likewise the booking core (R05) now sits on `@bygelo/roundrobin-booking`, whose schema already enforces the no-double-booking guarantee with a PostgreSQL `EXCLUDE USING gist` constraint. R05's remaining work here is the runtime and the venue-facing surface, not the invariant.
 
 Everything else — sport profile, the rotation engine, arrival, score, display, Studio, DUPR — is this repo's.
 
@@ -15,11 +15,11 @@ Everything else — sport profile, the rotation engine, arrival, score, display,
 
 Validated 2026-08-08. Greenfield. This roadmap covers the whole product: the booking kernel, the module runtime, multi-sport play operation, the installable business/ERP layer, the branded public portal, the public API, and replaceable Connect adapters.
 
-roundrobbin is a clean rewrite migrating off [Sideout](../../Codex/sideout) (`C:\Users\maran\Codex\sideout`). It keeps Sideout's validated domain model and its 29-item benchmark history as **spec**, and keeps none of its code.
+roundrobin is a clean rewrite migrating off [Sideout](../../Codex/sideout) (`C:\Users\maran\Codex\sideout`). It keeps Sideout's validated domain model and its 29-item benchmark history as **spec**, and keeps none of its code.
 
 ## Product law
 
-roundrobbin is a **booking OS**: one canonical venue truth, plus modules a venue operator installs and removes without corrupting that truth.
+roundrobin is a **booking OS**: one canonical venue truth, plus modules a venue operator installs and removes without corrupting that truth.
 
 A feature belongs only when it measurably shortens time-to-book, time-to-play, or operator time; improves safe resource utilization; lets an operator express their brand; or is reachable through the public API. It must sit behind a stable core contract and remain removable without data loss.
 
@@ -28,7 +28,7 @@ Two laws inherited from Sideout, kept verbatim because both survived validation:
 - **No service rule branches on a sport code.** `organization`, `facility`, `resource`, `session`, `booking`, `product`, `customer_order` stay neutral. Sport is configuration.
 - **A module may call core ports or consume versioned events. It may never read another module's store.**
 
-One law reversed on purpose. Sideout's law said "*without becoming a general ERP*" and rejected accounting/CRM/BI outright. roundrobbin instead treats ERP breadth as **installable**: the core stays lean and boring, and finance, workforce, and analytics ship as opt-in Business modules a tenant enables. The rejection list did not disappear — it moved from "never" to "only as a module, only on demand, and never in core." See [What we are NOT going to do](#what-we-are-not-going-to-do).
+One law reversed on purpose. Sideout's law said "*without becoming a general ERP*" and rejected accounting/CRM/BI outright. roundrobin instead treats ERP breadth as **installable**: the core stays lean and boring, and finance, workforce, and analytics ship as opt-in Business modules a tenant enables. The rejection list did not disappear — it moved from "never" to "only as a module, only on demand, and never in core." See [What we are NOT going to do](#what-we-are-not-going-to-do).
 
 ### On the name
 
@@ -38,7 +38,7 @@ Round-robin is a fair-rotation scheduling algorithm. That is not a coincidence a
 
 Bounded discovery: the Sideout tree (69 tables across 20 migrations, 15 API services, 16 test files), the reference product, the two named providers, and one web pass.
 
-- **Rezerv (`rezerv.co`)** — the named reference — is a horizontal all-in-one OS for service businesses, registered in Singapore, spanning fitness, beauty/wellness, **sports facilities (padel, pickleball, tennis)**, arts, education, F&B, healthcare, and hospitality. Its module set is website builder, scheduling, payment, membership, marketing automation (email/SMS/WhatsApp), analytics, mobile app, staff management, loyalty, and smart-lock/lighting integration. **It publishes no public API.** That validates the "roundrobbin OS" framing and the modular-ERP shape, and it locates the wedge: an open, documented API is a differentiator against the closest reference product, not table stakes. ([Rezerv](https://www.rezerv.co/))
+- **Rezerv (`rezerv.co`)** — the named reference — is a horizontal all-in-one OS for service businesses, registered in Singapore, spanning fitness, beauty/wellness, **sports facilities (padel, pickleball, tennis)**, arts, education, F&B, healthcare, and hospitality. Its module set is website builder, scheduling, payment, membership, marketing automation (email/SMS/WhatsApp), analytics, mobile app, staff management, loyalty, and smart-lock/lighting integration. **It publishes no public API.** That validates the "roundrobin OS" framing and the modular-ERP shape, and it locates the wedge: an open, documented API is a differentiator against the closest reference product, not table stakes. ([Rezerv](https://www.rezerv.co/))
 - **DUPR has a real, documented API** — a tiered public/partner program with an OpenAPI spec, bearer-token auth against `backend.mydupr.com`, a public read-only tier at [`api.dupr.gg/docs`](https://api.dupr.gg/docs), and an established partner roster (Pickleball.com, Swish, Reclub, PB360, Pickleball Global, ScoreHolio, PickleHeads, PlaybyPoint). Club approval runs 3–5 business days and grants an account manager. Match submission requires every participant to hold a DUPR ID. ([DUPR API partner integrations](https://dupr.zendesk.com/hc/en-us/categories/32142598126740-API-Partner-Integrations), [DUPR clubs](https://www.dupr.com/clubs), [community OpenAPI client](https://github.com/offsetkeyz/dupr-api-client)) — **this overturns Sideout's triage, which recorded no verified provider access.** DUPR moves from research-only to buildable.
 - **ReClub publishes no partner or public API.** It is a consumer community app — RSVP, kudos, internal leaderboards, host-run sessions — that is *itself* a DUPR API partner. Its club-facing pages document no booking, facility, or developer surface. ReClub is therefore an adjacent demand-side app, not an integration surface. See [Triage](#triage) for the only workable design. ([Reclub for clubs](https://reclub.co/platform/clubs), [DUPR × Reclub partnership](https://pickleball.reclub.co/news/official-partnership-announcement-dupr-and-reclub-join-forces))
 - **The Sideout domain model is sound and worth carrying.** `organization → activity → facility → resource → session → booking` plus `product/inventory/customer_order`, with UUID PKs, `TIMESTAMPTZ`, and a `btree_gist` + `tstzrange` exclusion constraint that makes double-booking impossible at the database layer rather than in application code (`migration/001_create_platform.sql`).
@@ -96,19 +96,19 @@ Exit condition: one venue runs a full multi-sport evening — discovery, booking
 
 This tier is where the modular-ERP decision is cashed in. Each row is a module a tenant may never install. None of them may become a core dependency.
 
-Exit condition: a venue can run its money, membership, and reporting inside roundrobbin, and hand its accountant a file their software accepts — without roundrobbin owning a general ledger.
+Exit condition: a venue can run its money, membership, and reporting inside roundrobin, and hand its accountant a file their software accepts — without roundrobin owning a general ledger.
 
 | Item | What it closes | Surface | Effort | Benchmark | Status |
 |---|---|---|---:|---|---|
 | Commerce and inventory | Paddle/ball/apparel/pass/add-on catalog, variant, stock, booking add-on, checkout, pickup, refund reference, and counter sale — with concurrent-stock protection | Operator → Shop, public catalog | L | [R14](bench/roadmap/acceptance.md#r14--commerce) — Tier 1 (escalated: oversell under concurrency is a money bug and Sideout already had to defend against split-line duplicates) — quarantined, promote-on-build | Not started |
 | Membership and entitlement | Pass, entitlement, member price, usage limit, and reservation eligibility. Recurring billing, freeze, family, and credit stay out until three venues need the same rule | Operator → Membership, member portal | L | [R15](bench/roadmap/acceptance.md#r15--membership) — Tier 3 | Not started |
-| Owner insight with an accounting export their accountant accepts | Occupancy, revenue by source, rotation fill, cancellation/no-show, repeat player, inventory alert, connector health — plus a journal-shaped export. **This is the ERP compromise: roundrobbin reports and exports; it does not keep a ledger** | Operator → Insight, `GET /export/accounting` | M | [R16](bench/roadmap/acceptance.md#r16--insight-and-accounting-export) — Tier 3 | Not started |
+| Owner insight with an accounting export their accountant accepts | Occupancy, revenue by source, rotation fill, cancellation/no-show, repeat player, inventory alert, connector health — plus a journal-shaped export. **This is the ERP compromise: roundrobin reports and exports; it does not keep a ledger** | Operator → Insight, `GET /export/accounting` | M | [R16](bench/roadmap/acceptance.md#r16--insight-and-accounting-export) — Tier 3 | Not started |
 | Staff roster and shift, as a module | Who is on the desk, when, and what they may do — the operations half of HR. Payroll, leave accrual, and contracts stay out | Operator → Staff roster | M | [R17](bench/roadmap/acceptance.md#r17--staff-roster) — Tier 3 | Demand-gated — build after two venues ask |
 | Studio — a branded public portal in one version | Premade template, brand token, content slot, module order, court order, preview, atomic publish, rollback, and one published version feeding every public and display surface | `/studio`, public venue URL | L | [R18](bench/roadmap/acceptance.md#r18--studio) — Tier 3 | Not started |
 
 ## P3 — Connect: the public API and real providers
 
-Exit condition: a third party builds something real against roundrobbin without asking for help, and a venue can disconnect any provider without losing booking, payment, customer, result, configuration, or order truth.
+Exit condition: a third party builds something real against roundrobin without asking for help, and a venue can disconnect any provider without losing booking, payment, customer, result, configuration, or order truth.
 
 | Item | What it closes | Surface | Effort | Benchmark | Status |
 |---|---|---|---:|---|---|
@@ -143,14 +143,14 @@ Two notes on that order. **R19 sits earlier than its tier suggests** because ret
 
 ## What we are NOT going to do
 
-- **A general ledger, tax filing, payroll, or statutory accounting.** roundrobbin reports revenue and exports a journal-shaped file (R16). The accountant's software keeps the books. Reversal trigger: a venue demonstrates that no PH accounting package can consume the export.
+- **A general ledger, tax filing, payroll, or statutory accounting.** roundrobin reports revenue and exports a journal-shaped file (R16). The accountant's software keeps the books. Reversal trigger: a venue demonstrates that no PH accounting package can consume the export.
 - **A CRM, campaign builder, funnel, or nurture automation.** Transactional venue messages are in scope (R22); segmentation and broadcast are not. Rezerv ships marketing automation; that is a different company's bet.
 - **A BI or query builder.** Fixed reports plus CSV/journal export. If an operator needs a pivot table, they have a spreadsheet.
 - **Procurement, supplier, warehouse, manufacturing, or fleet.** No venue has asked and none will.
 - **An open app marketplace or arbitrary third-party server code.** The public API (R19) plus webhooks (R21) is the extension story. Running someone else's code inside the tenant boundary is not.
 - **A freeform page builder.** Studio stays premade, constrained, previewable, and versioned.
 - **A ReClub clone.** No global social graph, feed, chat, kudos, or community discovery. See Triage — ReClub is adjacent, not a feature to absorb.
-- **A DUPR clone or a proprietary rating authority.** roundrobbin submits to DUPR and reads from it. It never invents a competing number.
+- **A DUPR clone or a proprietary rating authority.** roundrobin submits to DUPR and reads from it. It never invents a competing number.
 - **A full tournament-format engine** until repeated demand proves the connector inadequate (R28).
 - **First-party hardware** — smart lock, camera, replay, terminal, or messaging. Adapters only.
 - **Microservice per module.** Modular monolith with ports and adapters. Revisit at a scale you do not have.

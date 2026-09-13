@@ -7,7 +7,7 @@
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { applyMigration, createStore, readPackageMigration } from '@bygelo/roundrobbin-kernel'
+import { applyMigration, createStore, readPackageMigration } from '@bygelo/roundrobin-kernel'
 
 const require = createRequire(import.meta.url)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -17,11 +17,26 @@ function packageRoot(specifier: string): string {
   return dirname(require.resolve(`${specifier}/package.json`))
 }
 
-// Dependency order, stated once. booking's tables reference organization, so
+// Dependency order, stated once. Every pack's tables reference organization, so
 // kernel is always first, and this app is always last.
+const PACK_CODE = [
+  'kernel',
+  'booking',
+  'billing',
+  'membership',
+  'commerce',
+  'notification',
+  'connector',
+  'consent',
+  'output',
+  'scan',
+] as const
+
 const SOURCE: { package_code: string; root: string }[] = [
-  { package_code: 'kernel', root: packageRoot('@bygelo/roundrobbin-kernel') },
-  { package_code: 'booking', root: packageRoot('@bygelo/roundrobbin-booking') },
+  ...PACK_CODE.map((package_code) => ({
+    package_code,
+    root: packageRoot(`@bygelo/roundrobin-${package_code}`),
+  })),
   { package_code: 'court', root: ROOT },
 ]
 
@@ -41,7 +56,7 @@ try {
   if (count === 0) console.log('up to date — nothing to apply')
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
+  process.exitCode = 1
 } finally {
-  await store.end()
+  await store.close()
 }

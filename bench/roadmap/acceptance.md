@@ -1,4 +1,4 @@
-﻿# roundrobbin roadmap acceptance criteria
+﻿# roundrobin roadmap acceptance criteria
 
 Every [ROADMAP.md](../../ROADMAP.md) row links here. A row without a falsifiable pass condition is a wish, not a roadmap item.
 
@@ -54,7 +54,7 @@ PASS iff, starting from an empty tenant with no seed SQL, an operator can create
 
 **Tier 2** — live provider sandbox.
 
-Steps: configure the chosen PH provider's sandbox credentials; book a slot and pay online; refund half; take a second booking as a manual counter payment; restart the API. PASS iff: the booking shows `paid` after restart; the refund shows a partial amount and the booking stays confirmed; the manual payment is distinguishable from the online one in the record; **no card number appears anywhere in the roundrobbin database or logs**; replaying the provider's webhook twice produces exactly one payment record. Non-idempotent by nature — provider sandbox state must be reset between runs.
+Steps: configure the chosen PH provider's sandbox credentials; book a slot and pay online; refund half; take a second booking as a manual counter payment; restart the API. PASS iff: the booking shows `paid` after restart; the refund shows a partial amount and the booking stays confirmed; the manual payment is distinguishable from the online one in the record; **no card number appears anywhere in the roundrobin database or logs**; replaying the provider's webhook twice produces exactly one payment record. Non-idempotent by nature — provider sandbox state must be reset between runs.
 
 ## R08 — Sport profile
 
@@ -158,7 +158,7 @@ PASS iff each of the nine producer events (confirmation, receipt, reminder, waiv
 
 **Tier 3.** Surface: signed `.ics` feed URL.
 
-PASS iff a signed feed URL renders a venue's sessions in a real calendar client, revoking the signature breaks the feed, and **changing the calendar never changes roundrobbin** — the feed is a projection, never a source of truth.
+PASS iff a signed feed URL renders a venue's sessions in a real calendar client, revoking the signature breaks the feed, and **changing the calendar never changes roundrobin** — the feed is a projection, never a source of truth.
 
 ## R24 — Data portability
 
