@@ -19,11 +19,11 @@ A kernel or pack change made *because of this app* is a finding, not a feature. 
 
 ## Status
 
-**Every P0–P3 roadmap row has a reachable surface** except R17 (demand-gated). Four rows are honestly partial — R07 (PayMongo unproven without sandbox credentials), R13 (no kiosk; Studio does not reach screens), R16 (journal import unverified in real accounting software), R20 (live DUPR needs club approval). Row-by-row status is in [ROADMAP.md](ROADMAP.md); what changed is in [CHANGELOG.md](CHANGELOG.md).
+**Every P0–P3 roadmap row has a reachable surface** except R17 (demand-gated). Three rows are honestly partial, each blocked on something outside the code — R07 (PayMongo unproven without sandbox credentials), R16 (journal import unverified in real accounting software), R20 (live DUPR needs club approval). The handoff for each is in `docs/`. Row-by-row status is in [ROADMAP.md](ROADMAP.md); what changed is in [CHANGELOG.md](CHANGELOG.md).
 
-Gate on a freshly migrated database, 2026-09-13: typecheck server 0 · web 0 · build 0 · `node --test` **318/318**. A headless walk of all 26 screens at 375 and 1280 found no overflow, console error, or stub.
+Gate, 2026-09-13: typecheck server 0 · web 0 · build 0 · `node --test` **365/365**, 0 skipped. A headless walk of every screen at 375 and 1280 found no overflow, console error, or stub. `script/a11y/audit.mjs` (axe-core, WCAG 2.2 A/AA) reports 0 critical, 0 serious, 0 moderate on every screen at both widths and inside the six main dialogs; a screen-reader pass by a person is still owed before R30 is met.
 
-**Needs the OS branch `fix/rollback-on-handled-error`.** Without it a refused request commits what it wrote before refusing; `test/kernel-rollback.test.ts` fails on an unfixed kernel. Rebuild the kernel's `dist` after checking the branch out.
+**Needs the OS branch `fix/pack-gap`** ([bygelo/roundrobin#3](https://github.com/bygelo/roundrobin/pull/3), stacked on [#1](https://github.com/bygelo/roundrobin/pull/1)). It carries the kernel rollback fix — without it a refused request commits what it wrote before refusing — plus the display/QR app-role lookup, held notifications, hold length, and jsonb fixes court relies on. Check it out in `../roundrobin`, rebuild the changed packages' `dist`, and run `npm run db:migrate` then `npm run db:role` so the app role can execute the new lookup functions.
 
 ## Run locally
 
@@ -76,7 +76,8 @@ Every variable is listed with its purpose in [.env.example](.env.example). The o
 | `TEST_DATABASE_URL` | Database tests skip — a green run without it proves little |
 | `COURT_WORKER` | Worker runs; set `off` to disable webhook delivery, outbox sending, hold sweep, reminders, schedule horizon |
 | `PAYMONGO_SECRET_KEY` | Online payment uses the deterministic sandbox adapter |
-| `NOTIFICATION_SMS_URL` | Messages wait in the outbox; nothing is sent |
+| `EMAIL_PROVIDER` (+ `EMAIL_API_KEY`, `EMAIL_FROM`) | Email messages wait in the outbox; nothing is sent. `resend`, `postmark`, or `http` (with `EMAIL_API_URL`) |
+| `NOTIFICATION_SMS_URL` | SMS messages wait in the outbox; nothing is sent. Email never goes to this URL |
 | `WEBHOOK_SIGNING_KEY` | A development key seals webhook secrets; refused in production |
 | `DUPR_MODE`, `DUPR_CLIENT_*` | DUPR shows "not configured"; `DUPR_MODE=sandbox` enables the test adapter |
 

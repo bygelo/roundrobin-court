@@ -65,7 +65,7 @@ export default function Page({ param }: PageProp) {
                       <Card className="shop-catalog__card">
                         <div className="stack" style={{ gap: 'var(--space-2)' }}>
                           <p className="eyebrow">{category.category_name}</p>
-                          <h3>{product.name}</h3>
+                          <h2 className="card__title">{product.name}</h2>
                           {product.description && <p className="muted">{product.description}</p>}
                         </div>
                         <p className="shop-catalog__price">

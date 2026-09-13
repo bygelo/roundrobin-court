@@ -1,4 +1,4 @@
-// Seed step for the display module: a lounge board and a Court 1 scoreboard.
+// Seed step for the display module: a lounge board, a lobby kiosk, and a Court 1 scoreboard.
 //
 // A credential is shown once, at creation, so the enrolment link is printed on
 // the run that creates the screen. A later run finds the screen by name and
@@ -16,8 +16,9 @@ export async function seedDisplay(context: SeedContext): Promise<void> {
     WHERE organization_id = ${organization_id} AND display_name = 'Court 1' AND deleted_at IS NULL
     ORDER BY sort_order LIMIT 1`
 
-  const wanted: { kind: 'lounge' | 'court'; display_name: string; resource_id?: string }[] = [
+  const wanted: { kind: 'lounge' | 'court' | 'kiosk'; display_name: string; resource_id?: string }[] = [
     { kind: 'lounge', display_name: 'Lounge TV' },
+    { kind: 'kiosk', display_name: 'Lobby kiosk' },
   ]
   if (court) wanted.push({ kind: 'court', display_name: 'Court 1 TV', resource_id: court.resource_id })
   else console.log('  display: no "Court 1" yet — Court 1 TV skipped')

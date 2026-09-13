@@ -23,7 +23,7 @@ import type { PageProp } from '../../registry.ts'
 import { useOperator } from '../../session.tsx'
 import './display.css'
 
-type DisplayKind = 'court' | 'lounge' | 'counter'
+type DisplayKind = 'court' | 'lounge' | 'counter' | 'kiosk'
 type ScreenStatus = 'online' | 'stale' | 'offline' | 'revoked'
 
 type Screen = {
@@ -38,6 +38,10 @@ type Screen = {
   config_version: number
   reported_config_version: number | null
   is_config_behind: boolean
+  site_version_number: number
+  reported_site_version_number: number | null
+  site_version_reported_at: string | null
+  is_site_behind: boolean
   created_at: string
   revoked_at: string | null
 }
@@ -48,12 +52,26 @@ const KIND_LABEL: Record<DisplayKind, string> = {
   lounge: 'Lounge board',
   court: 'Court scoreboard',
   counter: 'Counter',
+  kiosk: 'Lobby kiosk',
 }
 
 const KIND_DESCRIPTION: Record<DisplayKind, string> = {
   lounge: 'Every court’s live score, open play now and up next, and the next bookings.',
   court: 'One court: who is playing, the live score, and when the court is booked.',
   counter: 'The next open courts today and how many players are expected.',
+  kiosk: 'A self-service tablet: open courts in the next few hours, open play, today’s programs, and a QR code to book on a phone. No player names.',
+}
+
+const KIND_ORDER: DisplayKind[] = ['lounge', 'court', 'counter', 'kiosk']
+
+const SUGGESTED_NAME: Record<Exclude<DisplayKind, 'court'>, string> = {
+  lounge: 'Lounge TV',
+  counter: 'Front counter',
+  kiosk: 'Lobby kiosk',
+}
+
+function siteVersionLabel(version_number: number): string {
+  return version_number === 0 ? 'default look' : `v${version_number}`
 }
 
 const STATUS: Record<ScreenStatus, { tone: BadgeTone; label: string }> = {
@@ -91,7 +109,7 @@ export default function Page(_prop: PageProp) {
       <PageHeader
         eyebrow="Play"
         title="Displays"
-        description="TVs that show live scores, open play, and open courts. Each screen has its own private link and refreshes itself every few seconds."
+        description="TVs and lobby tablets that show live scores, open play, and open courts in your published Studio look. Each screen has its own private link and refreshes itself every few seconds."
         action={add_button}
       />
       {notice && <Alert severity="success" title={notice} onDismiss={() => setNotice(undefined)} />}
@@ -104,14 +122,14 @@ export default function Page(_prop: PageProp) {
               action={add_button}
             />
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>
                     <th>Screen</th>
                     <th>Status</th>
                     <th>Last seen</th>
-                    <th>Version</th>
+                    <th>Site version</th>
                     <th>
                       <span className="visually-hidden">Actions</span>
                     </th>
@@ -138,8 +156,13 @@ export default function Page(_prop: PageProp) {
                             : 'Never connected — open its link on the TV'}
                       </td>
                       <td>
-                        <span className="row">
-                          v{one.config_version}
+                        <span className="row display-admin__version">
+                          {one.reported_site_version_number === null
+                            ? 'Not reported yet'
+                            : `Showing ${siteVersionLabel(one.reported_site_version_number)}`}
+                          {one.is_site_behind && one.status !== 'revoked' && (
+                            <Badge tone="caution">Behind · published is {siteVersionLabel(one.site_version_number)}</Badge>
+                          )}
                           {one.is_config_behind && one.status !== 'revoked' && <Badge tone="caution">Update pending</Badge>}
                         </span>
                       </td>
@@ -205,7 +228,7 @@ function AddScreenDialog({
   const suggest = (next_kind: DisplayKind, next_court: string) => {
     if (is_named) return
     const court_name = court.find((one) => one.resource_id === next_court)?.display_name
-    setName(next_kind === 'lounge' ? 'Lounge TV' : next_kind === 'counter' ? 'Front counter' : `${court_name ?? 'Court'} TV`)
+    setName(next_kind === 'court' ? `${court_name ?? 'Court'} TV` : SUGGESTED_NAME[next_kind])
   }
 
   const create = useAction(async () =>
@@ -250,7 +273,7 @@ function AddScreenDialog({
             setKind(next)
             suggest(next, resource_id)
           }}
-          option={(['lounge', 'court', 'counter'] as const).map((one) => ({ value: one, label: KIND_LABEL[one] }))}
+          option={KIND_ORDER.map((one) => ({ value: one, label: KIND_LABEL[one] }))}
         />
         {kind === 'court' &&
           (court.length === 0 ? (

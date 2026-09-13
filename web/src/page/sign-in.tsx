@@ -21,12 +21,12 @@ export default function SignIn() {
   }
 
   return (
-    <div className="sign-in">
-      <form className="sign-in__panel" onSubmit={submit}>
+    <main className="sign-in" id="main">
+      <form className="sign-in__panel" onSubmit={submit} aria-labelledby="sign-in-title">
         <p className="wordmark">
           round<span>robin</span> court
         </p>
-        <h1>Staff sign in</h1>
+        <h1 id="sign-in-title">Staff sign in</h1>
         <p className="sign-in__lead">Run the courts, the queue, and the counter from one console.</p>
         <ErrorAlert error={action.error} onDismiss={action.clearError} />
         <TextInput
@@ -56,6 +56,6 @@ export default function SignIn() {
           {action.is_pending ? 'Signing in…' : 'Sign in'}
         </Button>
       </form>
-    </div>
+    </main>
   )
 }

@@ -72,7 +72,18 @@ a { color: var(--accent); }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 table { border-collapse: collapse; width: 100%; }
-:where(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* Form fields show focus on any focus (a date field's inner segments do not match :focus-visible on the host). */
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea):focus { outline: 3px solid var(--focus); outline-offset: 2px; }
+:where(input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week]):focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* The yellow ring alone is faint on white; a dark inner edge keeps 3:1 against any surface (1.4.11). */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { box-shadow: 0 0 0 1px var(--ink); }
+/* Programmatic focus targets (skip link, dialog container) need no ring. */
+:where(main, [role=dialog])[tabindex='-1']:focus { outline: none; box-shadow: var(--shadow-raised); }
+main[tabindex='-1']:focus { box-shadow: none; }
+/* Keep what receives focus clear of the sticky operator bar and public header (2.4.11). */
+html:has(.operator) { scroll-padding-top: 76px; }
+html:has(.public__header) { scroll-padding-top: 80px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip-link { position: absolute; left: var(--space-3); top: -60px; z-index: 50; background: var(--ink); color: var(--paper); padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill); }
 .skip-link:focus { top: var(--space-3); }
@@ -214,8 +225,10 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 @media (max-width: 900px) {
   .operator { grid-template-areas: 'bar' 'main'; grid-template-columns: 1fr; }
   .operator__menu { display: grid; }
-  .operator__nav { border-right: 0; height: calc(100vh - 60px); left: 0; position: fixed; right: 0; top: 60px; transform: translateX(-100%); transition: transform var(--motion); z-index: 30; }
-  .operator.is-nav-open .operator__nav { transform: none; }
+  /* Closed: off screen AND out of the tab order / accessibility tree (visibility), so
+     keyboard focus never lands on an invisible link. */
+  .operator__nav { border-right: 0; height: calc(100vh - 60px); left: 0; position: fixed; right: 0; top: 60px; transform: translateX(-100%); transition: transform var(--motion), visibility 0s linear 180ms; visibility: hidden; z-index: 30; }
+  .operator.is-nav-open .operator__nav { transform: none; transition: transform var(--motion), visibility 0s; visibility: visible; }
   .operator__main { padding-top: var(--space-5); }
 }
 
@@ -237,7 +250,7 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .public__nav a { border-radius: var(--radius-pill); color: var(--ink); font-weight: 600; padding: var(--space-2) var(--space-4); text-decoration: none; }
 .public__nav a:hover { background: var(--tint); }
 .public__nav a[aria-current='page'] { background: var(--accent); color: #fff; }
-.public__menu { background: none; border: 1.5px solid var(--line-strong); border-radius: var(--radius-pill); display: none; font-weight: 600; margin-left: auto; min-height: var(--control-sm); padding: 0 var(--space-4); }
+.public__menu { background: none; border: 1.5px solid var(--line-strong); border-radius: var(--radius-pill); display: none; font-weight: 600; margin-left: auto; min-height: var(--control-md); padding: 0 var(--space-4); }
 .public__main { flex: 1; margin: 0 auto; max-width: 1180px; padding: var(--space-6) clamp(var(--space-4), 5vw, var(--space-8)) var(--space-8); width: 100%; }
 .public__footer { background: var(--ink); color: #d8d7d2; display: flex; flex-wrap: wrap; gap: var(--space-5); justify-content: space-between; padding: var(--space-6) clamp(var(--space-4), 5vw, var(--space-8)); }
 .public__footer strong { color: #fff; }

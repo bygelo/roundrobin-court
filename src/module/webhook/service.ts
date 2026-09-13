@@ -9,6 +9,13 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { openSecret, sealSecret } from '@bygelo/roundrobin-connector'
 import { DomainError, listEnabledModuleCode, type TenantContext, type Uuid } from '@bygelo/roundrobin-kernel'
+import {
+  ADDRESS_REFUSED_PREFIX,
+  WebhookAddressError,
+  assertWebhookTarget,
+  type AddressOption,
+  type LookupFunction,
+} from './address.ts'
 import type { EmitWebhookInput, WebhookEventCode } from './contract.ts'
 
 export class WebhookError extends DomainError {}
@@ -119,24 +126,13 @@ export type WebhookSubscription = {
   pending_count: number
   dead_count: number
   last_delivered_at: Date | null
+  /** 'address_not_allowed' when delivery found the address private and paused the subscription. */
+  paused_reason: 'address_not_allowed' | null
 }
 
-export function assertWebhookUrl(url: unknown): string {
-  if (typeof url !== 'string' || !url.trim()) throw new WebhookError('Enter the URL that should receive events.')
-  let parsed: URL
-  try {
-    parsed = new URL(url.trim())
-  } catch {
-    throw new WebhookError('That is not a valid URL. Use a full address such as https://example.com/hook.')
-  }
-  const is_local = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
-  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && is_local)) {
-    throw new WebhookError('Webhook URLs must use https://. Plain http is allowed only for localhost during development.')
-  }
-  if (parsed.username || parsed.password) {
-    throw new WebhookError('Do not put a username or password in the webhook URL; verify the signature instead.')
-  }
-  return parsed.toString()
+/** Shape, port, and private-network check (resolves DNS). See ./address.ts. */
+export function assertWebhookUrl(url: unknown, option: AddressOption = {}): Promise<string> {
+  return assertWebhookTarget(url, option)
 }
 
 export function assertEventCode(value: unknown): WebhookEventCode[] {
@@ -156,7 +152,12 @@ async function selectSubscription(tenant: TenantContext, webhook_subscription_id
            (SELECT count(*)::int FROM webhook_delivery d
              WHERE d.webhook_subscription_id = s.webhook_subscription_id AND d.status = 'dead') AS dead_count,
            (SELECT max(d.delivered_at) FROM webhook_delivery d
-             WHERE d.webhook_subscription_id = s.webhook_subscription_id) AS last_delivered_at
+             WHERE d.webhook_subscription_id = s.webhook_subscription_id) AS last_delivered_at,
+           CASE WHEN NOT s.is_active AND (
+             SELECT d.last_error FROM webhook_delivery d
+             WHERE d.webhook_subscription_id = s.webhook_subscription_id AND d.last_attempted_at IS NOT NULL
+             ORDER BY d.last_attempted_at DESC, d.webhook_delivery_id DESC LIMIT 1
+           ) LIKE ${`${ADDRESS_REFUSED_PREFIX}%`} THEN 'address_not_allowed' END AS paused_reason
     FROM webhook_subscription s
     WHERE s.organization_id = ${tenant.organization_id}
       AND s.deleted_at IS NULL
@@ -177,10 +178,10 @@ async function findSubscription(tenant: TenantContext, webhook_subscription_id: 
 export async function createSubscription(
   tenant: TenantContext,
   input: { url: unknown; event_code: unknown; description?: unknown; is_active?: unknown },
-  option: { env?: NodeJS.ProcessEnv } = {},
+  option: AddressOption = {},
 ): Promise<{ subscription: WebhookSubscription; secret: string }> {
-  const url = assertWebhookUrl(input.url)
   const event_code = assertEventCode(input.event_code)
+  const url = await assertWebhookUrl(input.url, option)
   const description = typeof input.description === 'string' && input.description.trim() ? input.description.trim() : null
   const is_active = input.is_active === undefined ? true : input.is_active === true
   const { secret, secret_prefix } = generateSecret()
@@ -196,17 +197,27 @@ export async function updateSubscription(
   tenant: TenantContext,
   webhook_subscription_id: Uuid,
   input: { url?: unknown; event_code?: unknown; description?: unknown; is_active?: unknown },
+  option: AddressOption = {},
 ): Promise<WebhookSubscription> {
   const current = await findSubscription(tenant, webhook_subscription_id)
-  const url = input.url === undefined ? current.url : assertWebhookUrl(input.url)
   const event_code = input.event_code === undefined ? current.event_code : assertEventCode(input.event_code)
+  const is_active_next = input.is_active === undefined ? current.is_active : input.is_active === true
+  // A new URL is always checked; an unchanged one is re-checked when the
+  // subscription would be (or stay) active, so "Resume" cannot re-arm a
+  // now-private address. Pausing never needs the check.
+  const url =
+    input.url !== undefined
+      ? await assertWebhookUrl(input.url, option)
+      : is_active_next
+        ? await assertWebhookUrl(current.url, option)
+        : current.url
   const description =
     input.description === undefined
       ? current.description
       : typeof input.description === 'string' && input.description.trim()
         ? input.description.trim()
         : null
-  const is_active = input.is_active === undefined ? current.is_active : input.is_active === true
+  const is_active = is_active_next
   await tenant.query`
     UPDATE webhook_subscription
     SET url = ${url}, event_code = ${event_code}::text[], description = ${description}, is_active = ${is_active}
@@ -368,6 +379,8 @@ export type ProcessOption = {
   timeout_ms?: number
   webhook_delivery_id?: Uuid
   env?: NodeJS.ProcessEnv
+  /** DNS lookup used for the delivery-time address check; tests inject one. */
+  lookup?: LookupFunction
 }
 
 export type ProcessResult = {
@@ -379,6 +392,7 @@ export type ProcessResult = {
 
 type ClaimRow = {
   webhook_delivery_id: Uuid
+  webhook_subscription_id: Uuid
   attempt_count: number
   replay_count: number
   url: string
@@ -422,7 +436,7 @@ export async function processWebhookDelivery(tenant: TenantContext, option: Proc
   const key = resolveWebhookKey(option.env)
 
   const claim = await tenant.query<ClaimRow[]>`
-    SELECT d.webhook_delivery_id, d.attempt_count, d.replay_count, s.url, s.secret_envelope,
+    SELECT d.webhook_delivery_id, d.webhook_subscription_id, d.attempt_count, d.replay_count, s.url, s.secret_envelope,
            e.webhook_event_id, e.event_code, e.subject_code, e.spec_version, e.source, e.data, e.occurred_at
     FROM webhook_delivery d
     JOIN webhook_subscription s ON s.webhook_subscription_id = d.webhook_subscription_id
@@ -440,12 +454,54 @@ export async function processWebhookDelivery(tenant: TenantContext, option: Proc
 
   const result: ProcessResult = { claimed_count: claim.length, delivered_count: 0, failed_count: 0, dead_count: 0 }
 
+  // One verdict per URL per run: DNS is asked once, and every claimed delivery
+  // to a refused address is marked the same way.
+  const verdict = new Map<string, Promise<WebhookAddressError | null>>()
+  const checkAddress = (url: string) => {
+    if (!verdict.has(url)) {
+      verdict.set(
+        url,
+        assertWebhookTarget(url, { ...(option.env ? { env: option.env } : {}), ...(option.lookup ? { lookup: option.lookup } : {}) })
+          .then(() => null)
+          .catch((error: unknown) => {
+            if (error instanceof WebhookAddressError) return error
+            throw error
+          }),
+      )
+    }
+    return verdict.get(url)!
+  }
+  const paused = new Set<Uuid>()
+
   for (const row of claim) {
     const attempt_count = row.attempt_count + 1
     const body = buildEnvelope(row)
     let status_code: number | null = null
     let error_text: string | null = null
+
+    const refused = await checkAddress(row.url)
+    if (refused && !refused.is_retryable) {
+      // Not sent, and trying again will not help: record a clear reason, keep
+      // the delivery queued (status failed, due now) so it flows once the
+      // address is fixed and the subscription resumed, and pause the subscription.
+      await tenant.query`
+        UPDATE webhook_delivery
+        SET status = 'failed', attempt_count = ${attempt_count}, last_attempted_at = ${now},
+            last_status_code = NULL, delivered_at = NULL, dead_at = NULL, next_attempt_at = ${now},
+            last_error = ${`${ADDRESS_REFUSED_PREFIX} ${refused.message} The subscription was paused.`.slice(0, 500)}
+        WHERE webhook_delivery_id = ${row.webhook_delivery_id}`
+      if (!paused.has(row.webhook_subscription_id)) {
+        paused.add(row.webhook_subscription_id)
+        await tenant.query`
+          UPDATE webhook_subscription SET is_active = false
+          WHERE organization_id = ${tenant.organization_id} AND webhook_subscription_id = ${row.webhook_subscription_id}`
+      }
+      result.failed_count += 1
+      continue
+    }
+
     try {
+      if (refused) throw refused
       const secret = openSecret(row.secret_envelope, key)
       const timestamp_second = Math.floor(now.getTime() / 1000)
       const response = await fetchImpl(row.url, {
@@ -465,7 +521,11 @@ export async function processWebhookDelivery(tenant: TenantContext, option: Proc
       })
       status_code = response.status
       await response.arrayBuffer().catch(() => undefined)
-      if (status_code < 200 || status_code >= 300) error_text = `Subscriber answered HTTP ${status_code}`
+      if (status_code >= 300 && status_code < 400) {
+        error_text = `Subscriber answered HTTP ${status_code} (a redirect); redirects are not followed, so update the URL`
+      } else if (status_code < 200 || status_code >= 300) {
+        error_text = `Subscriber answered HTTP ${status_code}`
+      }
     } catch (error) {
       const name = error instanceof Error ? error.name : ''
       error_text =

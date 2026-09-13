@@ -21,7 +21,7 @@ import {
   ArrowsClockwise,
   X,
 } from '@phosphor-icons/react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { SESSION_EXPIRED, operatorFetch, readSession, writeSession } from '../api.ts'
 import { Alert, Button, Loading } from '../component/ui.tsx'
 import { useResource } from '../hook.ts'
@@ -69,9 +69,40 @@ export function OperatorShell({ entry, children }: { entry?: PageEntry; children
 
   useEffect(() => setNavOpen(false), [path])
 
+  // Mobile nav: opening moves focus to the first link; Escape closes and returns
+  // focus to the toggle.
+  const menu_ref = useRef<HTMLButtonElement>(null)
+  const nav_ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!is_nav_open) return
+    const frame = window.requestAnimationFrame(() => nav_ref.current?.querySelector<HTMLElement>('a, button')?.focus())
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setNavOpen(false)
+      menu_ref.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [is_nav_open])
+
   const capability = useResource(
     () => (session ? operatorFetch<Capability>('/api/v1/capability') : Promise.resolve(undefined)),
     [session?.token],
+  )
+
+  // Staff whose password an owner issued are asked to set their own. A banner,
+  // not a forced redirect: the desk must never be locked out mid-shift.
+  const account = useResource(
+    () =>
+      session
+        ? operatorFetch<{ account: { is_secret_temporary: boolean } }>('/api/v1/admin/account')
+            .then((one) => one.account)
+            .catch(() => ({ is_secret_temporary: false }))
+        : Promise.resolve({ is_secret_temporary: false }),
+    [session?.token, path === '/operator/account'],
   )
 
   const signOut = useCallback(() => {
@@ -127,9 +158,11 @@ export function OperatorShell({ entry, children }: { entry?: PageEntry; children
         </a>
         <header className="operator__bar">
           <button
+            ref={menu_ref}
             type="button"
             className="operator__menu"
-            aria-label={is_nav_open ? 'Close navigation' : 'Open navigation'}
+            aria-label="Navigation"
+            aria-controls="operator-nav"
             aria-expanded={is_nav_open}
             onClick={() => setNavOpen((value) => !value)}
           >
@@ -142,7 +175,7 @@ export function OperatorShell({ entry, children }: { entry?: PageEntry; children
             <Storefront size={16} aria-hidden /> {session.organization_code}
           </span>
         </header>
-        <nav className="operator__nav" aria-label="Console">
+        <nav className="operator__nav" aria-label="Console" id="operator-nav" ref={nav_ref}>
           {GROUP_ORDER.map((group) => {
             const item = visible.filter((one) => one.group === group)
             if (item.length === 0) return null
@@ -167,7 +200,11 @@ export function OperatorShell({ entry, children }: { entry?: PageEntry; children
             <Link to={`/v/${session.organization_code}`} className="nav-item">
               <Storefront size={20} aria-hidden /> Public site
             </Link>
-            <Link to="/operator/account" className={`nav-item ${path === '/operator/account' ? 'is-active' : ''}`}>
+            <Link
+              to="/operator/account"
+              className={`nav-item ${path === '/operator/account' ? 'is-active' : ''}`}
+              aria-current={path === '/operator/account' ? 'page' : undefined}
+            >
               <UsersThree size={20} aria-hidden /> Your account
             </Link>
             <button type="button" className="nav-item" onClick={signOut}>
@@ -175,7 +212,13 @@ export function OperatorShell({ entry, children }: { entry?: PageEntry; children
             </button>
           </div>
         </nav>
-        <main className="operator__main" id="main">
+        <main className="operator__main" id="main" tabIndex={-1}>
+          {account.data?.is_secret_temporary && path !== '/operator/account' && (
+            <Alert severity="caution" title="Set your own password">
+              You are signed in with a password someone else gave you.{' '}
+              <Link to="/operator/account">Change it now</Link>
+            </Alert>
+          )}
           {is_entry_disabled ? (
             <Alert severity="caution" title="This module is turned off for your venue">
               An owner can turn it back on under Admin → Modules. Nothing was deleted.

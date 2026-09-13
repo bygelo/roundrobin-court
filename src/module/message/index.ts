@@ -22,6 +22,7 @@ import {
   runReminder,
   savePreference,
   saveTemplate,
+  sendTestEmail,
 } from './service.ts'
 
 export const MESSAGE_MODULE: ModuleDeclaration = {
@@ -100,6 +101,14 @@ export function createMessageRoute(_store: Store): RouteContributor {
     app.get('/api/v1/message/provider', async (context) => {
       authorize(context.get('session'), 'message.read')
       return context.json({ provider: await readProviderStatus(context.get('tenant')) })
+    })
+
+    // One test email to an address the owner types. Not a player message, so
+    // it bypasses the outbox; the result says honestly whether it went out.
+    app.post('/api/v1/message/test-email', async (context) => {
+      authorize(context.get('session'), 'message.manage')
+      const body = await readBody(context.req)
+      return context.json({ result: await sendTestEmail(context.get('tenant'), body) })
     })
 
     app.get('/api/v1/message/preference', async (context) => {

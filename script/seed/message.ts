@@ -7,7 +7,7 @@
 // templates insert-if-missing and notifyPlayer is unique per kind, subject,
 // and channel.
 
-import { dispatchMessage, ensureTemplate } from '../../src/module/message/service.ts'
+import { dispatchMessage, ensureTemplate, readProviderStatus } from '../../src/module/message/service.ts'
 import type { SeedContext } from './context.ts'
 
 export async function seedMessage(context: SeedContext): Promise<void> {
@@ -56,4 +56,8 @@ export async function seedMessage(context: SeedContext): Promise<void> {
     if (result.outcome === 'queued') queued_count += 1
   }
   console.log(`  message: templates ready; ${queued_count} sample confirmation queued`)
+  const provider = await readProviderStatus(tenant)
+  for (const one of provider.channel) {
+    console.log(`  message: ${one.delivery_channel} — ${one.status_label}`)
+  }
 }

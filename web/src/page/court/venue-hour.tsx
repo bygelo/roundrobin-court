@@ -170,7 +170,7 @@ function ClosureList({ closure, time_zone, is_manager, onDone }: { closure: Clos
       {closure.length === 0 ? (
         <EmptyState title="No closures planned" description="The venue is open every scheduled hour." />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="table">
             <thead>
               <tr>

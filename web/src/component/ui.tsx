@@ -12,8 +12,15 @@ import {
   WarningOctagon,
   X,
 } from '@phosphor-icons/react'
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
-import { useId } from 'react'
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  KeyboardEvent,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { Link } from '../route.tsx'
 
 type Tone = 'primary' | 'secondary' | 'quiet' | 'danger'
@@ -186,7 +193,7 @@ export function Field({
       </label>
       {children(id)}
       {hint && !error && <p className="field__hint">{hint}</p>}
-      {error && <p className="field__error">{error}</p>}
+      {error && <p className="field__error" id={`${id}-error`}>{error}</p>}
     </div>
   )
 }
@@ -199,7 +206,15 @@ export function TextInput({
 }: InputHTMLAttributes<HTMLInputElement> & { label: ReactNode; hint?: ReactNode; error?: string | undefined }) {
   return (
     <Field label={label} hint={hint} error={error}>
-      {(id) => <input id={id} className="input" aria-invalid={error ? true : undefined} {...rest} />}
+      {(id) => (
+        <input
+          id={id}
+          className="input"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          {...rest}
+        />
+      )}
     </Field>
   )
 }
@@ -324,25 +339,60 @@ export function Tabs<T extends string>({
   onChange: (value: T) => void
   label: string
 }) {
+  const list_ref = useRef<HTMLDivElement>(null)
+  // ARIA tab pattern: one tab stop (the selected tab); arrows, Home and End move
+  // between tabs and select as they go.
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = option.findIndex((one) => one.value === value)
+    const last = option.length - 1
+    const next =
+      event.key === 'ArrowRight' ? (index >= last ? 0 : index + 1)
+      : event.key === 'ArrowLeft' ? (index <= 0 ? last : index - 1)
+      : event.key === 'Home' ? 0
+      : event.key === 'End' ? last
+      : undefined
+    if (next === undefined || option.length === 0) return
+    event.preventDefault()
+    onChange(option[next]!.value)
+    list_ref.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus()
+  }
+  const has_selected = option.some((one) => one.value === value)
   return (
-    <div className="tabs" role="tablist" aria-label={label}>
-      {option.map((one) => (
-        <button
-          key={one.value}
-          type="button"
-          role="tab"
-          aria-selected={one.value === value}
-          className={cx('tabs__tab', one.value === value && 'is-active')}
-          onClick={() => onChange(one.value)}
-        >
-          {one.label}
-        </button>
-      ))}
+    <div className="tabs" role="tablist" aria-label={label} ref={list_ref} onKeyDown={onKeyDown}>
+      {option.map((one, index) => {
+        const is_selected = one.value === value
+        return (
+          <button
+            key={one.value}
+            type="button"
+            role="tab"
+            aria-selected={is_selected}
+            tabIndex={is_selected || (!has_selected && index === 0) ? 0 : -1}
+            className={cx('tabs__tab', is_selected && 'is-active')}
+            onClick={() => onChange(one.value)}
+          >
+            {one.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-/** A modal dialog using the native <dialog> element, so focus and Escape work. */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), summary'
+
+function focusableIn(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (one) => one.getClientRects().length > 0 && !one.closest('[inert]'),
+  )
+}
+
+/**
+ * A modal dialog. Focus moves in when it opens (to an autofocus field, else the
+ * first form control, else the dialog itself), Tab is trapped inside, Escape
+ * closes it, and focus returns to whatever opened it. Labelled by its title.
+ */
 export function Dialog({
   open,
   title,
@@ -356,20 +406,85 @@ export function Dialog({
   children: ReactNode
   footer?: ReactNode
 }) {
+  const title_id = useId()
+  const dialog_ref = useRef<HTMLDivElement>(null)
+  const opener_ref = useRef<Element | null>(null)
+  const was_open_ref = useRef(false)
+  const close_ref = useRef(onClose)
+  close_ref.current = onClose
+
+  // Remember the opener during render, before any autoFocus child steals focus.
+  if (open && !was_open_ref.current && typeof document !== 'undefined') {
+    const active = document.activeElement
+    if (active && active !== document.body && !dialog_ref.current?.contains(active)) opener_ref.current = active
+  }
+
+  useEffect(() => {
+    if (!open) return
+    was_open_ref.current = true
+    const dialog = dialog_ref.current
+    if (dialog && !dialog.contains(document.activeElement)) {
+      const body = dialog.querySelector<HTMLElement>('.dialog__body')
+      const preferred =
+        dialog.querySelector<HTMLElement>('[autofocus], [data-autofocus]') ??
+        (body ? focusableIn(body).find((one) => one.matches('input, select, textarea')) : undefined)
+      ;(preferred ?? dialog).focus()
+    }
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.stopPropagation()
+        close_ref.current()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      was_open_ref.current = false
+      const opener = opener_ref.current
+      opener_ref.current = null
+      // Return focus after the dialog is gone. If the opener went away with it
+      // (a removed row), fall back to the page's main landmark.
+      window.setTimeout(() => {
+        if (document.activeElement && document.activeElement !== document.body && document.contains(document.activeElement)) return
+        if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+        else document.getElementById('main')?.focus()
+      }, 0)
+    }
+  }, [open])
+
+  const trap = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab' || !dialog_ref.current) return
+    const item = focusableIn(dialog_ref.current)
+    if (item.length === 0) {
+      event.preventDefault()
+      return
+    }
+    const first = item[0]!
+    const last = item[item.length - 1]!
+    const active = document.activeElement
+    if (event.shiftKey && (active === first || active === dialog_ref.current)) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   return open ? (
     <div className="dialog-backdrop" onClick={onClose}>
       <div
+        ref={dialog_ref}
         className="dialog"
         role="dialog"
         aria-modal="true"
-        aria-label={typeof title === 'string' ? title : undefined}
+        aria-labelledby={title_id}
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose()
-        }}
+        onKeyDown={trap}
       >
         <header className="dialog__header">
-          <h2>{title}</h2>
+          <h2 id={title_id}>{title}</h2>
           <button type="button" className="alert__dismiss" onClick={onClose} aria-label="Close">
             <X size={18} aria-hidden />
           </button>

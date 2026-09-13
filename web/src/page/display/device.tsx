@@ -5,7 +5,7 @@
 // that looks live is worse than no score.
 
 import { CloudSlash, Television } from '@phosphor-icons/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ApiError, jsonBody, publicFetch } from '../../api.ts'
 import { formatMoney, formatTime, formatTimeRange } from '../../format.ts'
 import { useInterval } from '../../hook.ts'
@@ -50,6 +50,15 @@ type CounterProjection = {
   open_play_now_count: number
 }
 
+type KioskProjection = {
+  court: { display_name: string; sport_display_name: string | null; open_slot: { starts_at: string; ends_at: string; price_amount: string }[] }[]
+  open_play: { display_name: string; starts_at: string; ends_at: string; is_now: boolean; court_count: number; waiting_count: number }[]
+  program: { title: string; kind_code: string; starts_at: string; ends_at: string; seat_open_count: number; price_amount: string }[]
+  booking: { path: string; url: string; qr_svg: string } | null
+}
+
+type Brand = { display_name: string; accent: string; action: string; heading_font: string }
+
 type Snapshot = {
   display_name: string
   venue_name: string
@@ -58,13 +67,36 @@ type Snapshot = {
   stale_after_second: number
   refresh_after_second: number
   config_version: number
+  /** The venue's published Studio version; 0 is the unbranded default. */
+  site_version_number: number
+  brand: Brand
 } & (
   | { kind: 'court'; projection: CourtProjection }
   | { kind: 'lounge'; projection: LoungeProjection }
   | { kind: 'counter'; projection: CounterProjection }
+  | { kind: 'kiosk'; projection: KioskProjection }
 )
 
-const KIND_LABEL = { court: 'Court', lounge: 'Lounge', counter: 'Front counter' } as const
+const KIND_LABEL = { court: 'Court', lounge: 'Lounge', counter: 'Front counter', kiosk: 'Welcome' } as const
+
+const HEX = /^#[0-9a-f]{6}$/i
+const HEADING_FONT = ['Space Grotesk', 'Inter']
+
+/** Studio brand tokens as CSS variables on the display root. Only validated values get through. */
+function brandStyle(brand: Brand | undefined): CSSProperties | undefined {
+  if (!brand) return undefined
+  const style: Record<string, string> = {}
+  if (HEX.test(brand.accent)) {
+    style['--accent'] = brand.accent
+    style['--brand-accent'] = brand.accent
+  }
+  if (HEX.test(brand.action)) {
+    style['--action'] = brand.action
+    style['--brand-action'] = brand.action
+  }
+  if (HEADING_FONT.includes(brand.heading_font)) style['--font-heading'] = `'${brand.heading_font}', 'Inter', sans-serif`
+  return style as CSSProperties
+}
 
 export default function Page(_prop: PageProp) {
   const credential = useQuery().get('credential')?.trim() ?? ''
@@ -93,13 +125,28 @@ function Screen({ credential }: { credential: string }) {
   const [failure, setFailure] = useState<'network' | 'removed'>()
   const [now, setNow] = useState(() => new Date())
   const config_version = useRef<number | undefined>(undefined)
+  // The Studio version actually on screen, reported back on the next pull.
+  const rendered_site_version = useRef<number | undefined>(undefined)
   const is_pulling = useRef(false)
+
+  useEffect(() => {
+    if (snapshot) rendered_site_version.current = snapshot.site_version_number
+  }, [snapshot])
 
   const pull = useCallback(async () => {
     if (is_pulling.current) return
     is_pulling.current = true
     try {
-      const body = await publicFetch<Snapshot>('/public/display/state', jsonBody({ credential, config_version: config_version.current }))
+      const body = await publicFetch<Snapshot>(
+        '/public/display/state',
+        jsonBody({
+          credential,
+          config_version: config_version.current,
+          site_version_number: rendered_site_version.current,
+          // A kiosk's booking QR opens this same web origin on a phone.
+          origin: window.location.origin,
+        }),
+      )
       config_version.current = body.config_version
       setSnapshot(body)
       setLastSuccess(new Date())
@@ -151,10 +198,23 @@ function Screen({ credential }: { credential: string }) {
   const is_stale = failure === 'network' || age_second > snapshot.stale_after_second
 
   return (
-    <main className={`tv public--court-dark${is_stale ? ' is-stale' : ''}`}>
+    <main
+      className={`tv tv--${snapshot.kind} public--court-dark${is_stale ? ' is-stale' : ''}`}
+      style={brandStyle(snapshot.brand)}
+      data-site-version={snapshot.site_version_number}
+    >
       <header className="tv__header">
+        {/* Views without their own level-one heading (the lounge, a court mid-match) get a hidden one. */}
+        {(snapshot.kind === 'lounge' || (snapshot.kind === 'court' && snapshot.projection.live_match)) && (
+          <h1 className="visually-hidden">
+            {snapshot.venue_name} · {snapshot.kind === 'court' ? snapshot.projection.court.display_name : KIND_LABEL[snapshot.kind]}
+          </h1>
+        )}
         <div>
-          <p className="tv__venue">{snapshot.venue_name}</p>
+          <p className="tv__venue">
+            <span className="tv__brand-mark" aria-hidden />
+            {snapshot.venue_name}
+          </p>
           <p className="tv__label">
             {snapshot.kind === 'court' ? snapshot.projection.court.display_name : KIND_LABEL[snapshot.kind]}
           </p>
@@ -165,7 +225,7 @@ function Screen({ credential }: { credential: string }) {
       </header>
 
       {is_stale && (
-        <div className="tv__offline" role="alert">
+        <div className="tv__offline" role="status">
           <CloudSlash size={36} weight="bold" aria-hidden />
           <span>Offline — last updated {last_success_at ? formatTime(last_success_at, time_zone) : 'never'}</span>
         </div>
@@ -175,11 +235,15 @@ function Screen({ credential }: { credential: string }) {
         {snapshot.kind === 'court' && <CourtView projection={snapshot.projection} time_zone={time_zone} />}
         {snapshot.kind === 'lounge' && <LoungeView projection={snapshot.projection} time_zone={time_zone} />}
         {snapshot.kind === 'counter' && <CounterView projection={snapshot.projection} time_zone={time_zone} />}
+        {snapshot.kind === 'kiosk' && <KioskView projection={snapshot.projection} time_zone={time_zone} />}
       </div>
 
       <footer className="tv__footer">
         <span>{snapshot.display_name}</span>
-        <span>Updated {last_success_at ? formatTime(last_success_at, time_zone) : '—'}</span>
+        <span>
+          {snapshot.site_version_number > 0 ? `Site v${snapshot.site_version_number}` : 'Default look'} · Updated{' '}
+          {last_success_at ? formatTime(last_success_at, time_zone) : '—'}
+        </span>
       </footer>
     </main>
   )
@@ -323,6 +387,92 @@ function CounterView({ projection, time_zone }: { projection: CounterProjection;
           <span>Open play now</span>
         </div>
       </section>
+    </div>
+  )
+}
+
+function KioskView({ projection, time_zone }: { projection: KioskProjection; time_zone: string | undefined }) {
+  const open_court = projection.court.filter((one) => one.open_slot.length > 0)
+  return (
+    <div className="tv-kiosk">
+      <div className="tv-kiosk__main">
+        <section className="tv-kiosk__section" aria-label="Open courts">
+          <h1>Open courts in the next few hours</h1>
+          {open_court.length === 0 ? (
+            <p className="tv__empty">No open courts in the next few hours. Try open play or ask at the counter.</p>
+          ) : (
+            <div className="tv-kiosk__court">
+              {open_court.map((court) => (
+                <article key={court.display_name} className="tv-kiosk__tile">
+                  <h2>
+                    {court.display_name}
+                    {court.sport_display_name && <small>{court.sport_display_name}</small>}
+                  </h2>
+                  <ul className="tv-kiosk__slot">
+                    {court.open_slot.map((slot) => (
+                      <li key={slot.starts_at}>
+                        <strong>{formatTime(slot.starts_at, time_zone)}</strong>
+                        <span>{formatMoney(slot.price_amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="tv-kiosk__section" aria-label="Open play">
+          <h2>Open play</h2>
+          {projection.open_play.length === 0 ? (
+            <p className="tv__empty">No open play right now.</p>
+          ) : (
+            <ul className="tv-kiosk__list">
+              {projection.open_play.map((play) => (
+                <li key={`${play.display_name}-${play.starts_at}`}>
+                  <span className={`tv-kiosk__tag${play.is_now ? ' is-now' : ''}`}>{play.is_now ? 'Now' : 'Up next'}</span>
+                  <strong>{play.display_name}</strong>
+                  <span>
+                    {formatTimeRange(play.starts_at, play.ends_at, time_zone)} · {play.court_count} {play.court_count === 1 ? 'court' : 'courts'} ·{' '}
+                    {play.waiting_count} waiting
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {projection.program.length > 0 && (
+          <section className="tv-kiosk__section" aria-label="Programs today">
+            <h2>Later today</h2>
+            <ul className="tv-kiosk__list">
+              {projection.program.map((one) => (
+                <li key={`${one.title}-${one.starts_at}`}>
+                  <span className="tv-kiosk__tag">{one.kind_code.replace('_', ' ')}</span>
+                  <strong>{one.title}</strong>
+                  <span>
+                    {formatTimeRange(one.starts_at, one.ends_at, time_zone)} ·{' '}
+                    {one.seat_open_count > 0 ? `${one.seat_open_count} ${one.seat_open_count === 1 ? 'spot' : 'spots'} left` : 'Full'} ·{' '}
+                    {formatMoney(one.price_amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+
+      {projection.booking && (
+        <aside className="tv-kiosk__cta" aria-label="Book on your phone">
+          <div className="tv-kiosk__cta-text">
+            <h2>Book on your phone</h2>
+            <p>Scan the code with your camera to pick a court and time.</p>
+          </div>
+          {/* Server-rendered by the scan pack from the venue booking URL only. */}
+          <div className="tv-kiosk__qr" dangerouslySetInnerHTML={{ __html: projection.booking.qr_svg }} />
+          <p className="tv-kiosk__url">{projection.booking.url.replace(/^https?:\/\//, '')}</p>
+        </aside>
+      )}
     </div>
   )
 }

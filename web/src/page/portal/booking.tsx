@@ -110,7 +110,7 @@ export default function Page(_prop: PageProp) {
                   }
                 />
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap" tabIndex={0}>
                   <table className="table booking-table">
                     <caption className="visually-hidden">Bookings for {date}</caption>
                     <thead>

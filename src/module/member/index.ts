@@ -14,7 +14,10 @@ import {
   quote,
   readEntitlement,
   setSessionRule,
+  updateMemberPlan,
 } from './service.ts'
+import { readMemberBilling, setAutoRenew, settleMembershipBilling } from './billing.ts'
+import { runMembershipRenewal } from './renewal.ts'
 import { atomic } from '../shop/atomic.ts'
 
 export const MEMBER_MODULE: ModuleDeclaration = {
@@ -54,13 +57,51 @@ export function createMemberRoute(_store: Store): RouteContributor {
       return context.json({ plan }, 201)
     })
 
+    app.patch('/api/v1/member/plan/:member_plan_id', async (context) => {
+      authorize(context.get('session'), 'member.manage')
+      const body = await readBody(context.req)
+      const plan = await atomic(context.get('tenant'), (tenant) => updateMemberPlan(tenant, context.req.param('member_plan_id'), body))
+      return context.json({ plan })
+    })
+
     app.get('/api/v1/member/member', async (context) => {
       authorize(context.get('session'), 'member.read')
-      const member = await listMember(context.get('tenant'), {
-        status: context.req.query('status') || undefined,
-        search: context.req.query('search') || undefined,
+      const member = await atomic(context.get('tenant'), async (tenant) => {
+        // Payments arrive through billing with no event to hook; apply any paid
+        // membership invoice before showing statuses.
+        await settleMembershipBilling(tenant)
+        return listMember(tenant, {
+          status: context.req.query('status') || undefined,
+          search: context.req.query('search') || undefined,
+        })
       })
       return context.json({ member })
+    })
+
+    app.get('/api/v1/member/member/:membership_id/billing', async (context) => {
+      authorize(context.get('session'), 'member.read')
+      const billing = await atomic(context.get('tenant'), async (tenant) => {
+        await settleMembershipBilling(tenant)
+        return readMemberBilling(tenant, context.req.param('membership_id'))
+      })
+      return context.json({ billing })
+    })
+
+    app.post('/api/v1/member/member/:membership_id/auto-renew', async (context) => {
+      const session = context.get('session')
+      authorize(session, 'member.manage')
+      const body = await readBody(context.req)
+      const billing = await atomic(context.get('tenant'), (tenant) =>
+        setAutoRenew(tenant, context.req.param('membership_id'), body['is_auto_renew'], session.actor_id),
+      )
+      return context.json({ billing })
+    })
+
+    /** Run the renewal job for this venue now — the worker runs the same function on a timer. */
+    app.post('/api/v1/member/renewal/run', async (context) => {
+      authorize(context.get('session'), 'member.manage')
+      const result = await atomic(context.get('tenant'), (tenant) => runMembershipRenewal(tenant))
+      return context.json({ result })
     })
 
     app.post('/api/v1/member/member', async (context) => {

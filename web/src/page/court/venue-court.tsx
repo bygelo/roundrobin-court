@@ -73,7 +73,7 @@ export function CourtTab({ is_manager, onChange, onGo }: TabProp) {
                   {data.court.length === 0 ? (
                     <EmptyState title="No courts yet" description="Add your first court below. Most venues start with Court 1." />
                   ) : (
-                    <div className="table-wrap">
+                    <div className="table-wrap" tabIndex={0}>
                       <table className="table">
                         <thead>
                           <tr>

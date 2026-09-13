@@ -226,7 +226,7 @@ export default function DuprTab() {
                 }
               />
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0}>
                 <table className="table">
                   <thead>
                     <tr>
@@ -300,7 +300,7 @@ export default function DuprTab() {
                   description="When a confirmed match is submitted, its DUPR receipt or the reason DUPR refused it appears here."
                 />
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap" tabIndex={0}>
                   <table className="table">
                     <thead>
                       <tr>

@@ -7,7 +7,10 @@ import {
   addDay,
   addMonth,
   applyPriceRule,
+  billingBadge,
+  billingPeriod,
   isDate,
+  periodStatus,
   localDate,
   memberStatus,
   periodEnd,
@@ -68,6 +71,31 @@ describe('member calendar', () => {
     assert.equal(periodEnd('2027-03-01', 'annual'), '2028-03-01')
     assert.equal(isDate('2027-02-30'), false)
     assert.equal(isDate('2027-02-28'), true)
+  })
+
+  it('counts billing periods from the anchor, month-end safe', () => {
+    assert.deepEqual(billingPeriod('2027-01-31', 0, 'monthly'), { period_start_on: '2027-01-31', period_end_on: '2027-02-28' })
+    assert.deepEqual(billingPeriod('2027-01-31', 1, 'monthly'), { period_start_on: '2027-02-28', period_end_on: '2027-03-31' })
+    assert.deepEqual(billingPeriod('2027-01-31', 2, 'monthly'), { period_start_on: '2027-03-31', period_end_on: '2027-04-30' })
+    assert.deepEqual(billingPeriod('2028-01-31', 0, 'monthly'), { period_start_on: '2028-01-31', period_end_on: '2028-02-29' })
+    assert.deepEqual(billingPeriod('2028-02-29', 1, 'annual'), { period_start_on: '2029-02-28', period_end_on: '2030-02-28' })
+  })
+
+  it('reads a billing badge and period status', () => {
+    const base = { current_period_start_on: '2027-05-10', current_period_end_on: '2027-06-10' }
+    assert.deepEqual(billingBadge({ ...base, renewal_state_code: 'active', next_invoice_status: null, today: '2027-06-01' }), {
+      badge_code: 'paid_through',
+      badge_on: '2027-06-09',
+    })
+    assert.equal(billingBadge({ ...base, renewal_state_code: 'active', next_invoice_status: 'open', today: '2027-06-08' }).badge_code, 'due')
+    assert.equal(billingBadge({ ...base, renewal_state_code: 'active', next_invoice_status: 'open', today: '2027-06-10' }).badge_code, 'overdue')
+    assert.equal(billingBadge({ ...base, renewal_state_code: 'lapsed', next_invoice_status: 'open', today: '2027-06-20' }).badge_code, 'lapsed')
+    assert.equal(billingBadge({ ...base, renewal_state_code: 'pending_payment', next_invoice_status: null, today: '2027-05-10' }).badge_code, 'due')
+    assert.equal(periodStatus({ invoice_status: 'paid', due_on: '2027-01-01', today: '2027-02-01' }), 'paid')
+    assert.equal(periodStatus({ invoice_status: 'open', due_on: '2027-01-01', today: '2026-12-31' }), 'unpaid')
+    assert.equal(periodStatus({ invoice_status: 'partial', due_on: '2027-01-01', today: '2027-01-01' }), 'overdue')
+    assert.equal(memberStatus({ status: 'past_due', ends_at: null, now: new Date(), renewal_state_code: 'lapsed' }), 'lapsed')
+    assert.equal(memberStatus({ status: 'past_due', ends_at: null, now: new Date(), renewal_state_code: 'pending_payment' }), 'pending_payment')
   })
 
   it('derives expiring and expired from the clock', () => {

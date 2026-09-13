@@ -21,6 +21,15 @@ import {
   type TenantContext,
 } from '@bygelo/roundrobin-kernel'
 import { withPublicTenant } from '../../public.ts'
+import {
+  PASSWORD_CHANGED_EVENT_CODE,
+  RateLimitError,
+  assertOwnSession,
+  changeOwnSecret,
+  readAccount,
+  readRetryAfterSecond,
+  signOutOtherDevice,
+} from './account.ts'
 import { listAudit, recordAdminAudit } from './audit.ts'
 import {
   DATA_KEPT_SENTENCE,
@@ -223,6 +232,64 @@ export function createAdminRoute(store: Store): RouteContributor {
         is_data_deleted: false,
         message: `Turned off ${target.display_name}. ${DATA_KEPT_SENTENCE}`,
       })
+    })
+
+    // ---- your account ------------------------------------------------------
+    //
+    // Any signed-in staff member, whatever their role: authority is "this is my
+    // own session", checked by assertOwnSession, never admin.manage.
+
+    app.get('/api/v1/admin/account', async (context) => {
+      const session = context.get('session')
+      assertOwnSession(session, (context as unknown as AuditContext).get('api_key_id') !== undefined)
+      return context.json({ account: await readAccount(context.get('tenant'), session) })
+    })
+
+    app.post('/api/v1/admin/account/password', async (context) => {
+      const session = context.get('session')
+      const tenant = context.get('tenant')
+      assertOwnSession(session, (context as unknown as AuditContext).get('api_key_id') !== undefined)
+      const retry_after_second = readRetryAfterSecond(session)
+      if (retry_after_second > 0) {
+        context.header('Retry-After', String(retry_after_second))
+        return context.json({ error: new RateLimitError(retry_after_second).message, retry_after_second }, 429)
+      }
+      const body = await readJson(context)
+      const result = await changeOwnSecret(tenant, session, {
+        current_secret: body['current_secret'],
+        new_secret: body['new_secret'],
+      })
+      const label = await actingLabel(tenant, session)
+      await audit(context, tenant, session, {
+        event_code: PASSWORD_CHANGED_EVENT_CODE,
+        subject_table: 'actor',
+        subject_id: session.actor_id,
+        summary: `${label} changed their own password and signed out ${result.revoked_session_count} other device${result.revoked_session_count === 1 ? '' : 's'}`,
+        detail: { revoked_session_count: result.revoked_session_count },
+      })
+      return context.json({
+        ...result,
+        account: await readAccount(tenant, session),
+        message: 'Password changed — other devices were signed out.',
+      })
+    })
+
+    app.post('/api/v1/admin/account/sign-out-other', async (context) => {
+      const session = context.get('session')
+      const tenant = context.get('tenant')
+      assertOwnSession(session, (context as unknown as AuditContext).get('api_key_id') !== undefined)
+      const result = await signOutOtherDevice(tenant, session)
+      if (result.revoked_session_count > 0) {
+        const label = await actingLabel(tenant, session)
+        await audit(context, tenant, session, {
+          event_code: 'account.signed_out_other',
+          subject_table: 'actor',
+          subject_id: session.actor_id,
+          summary: `${label} signed out ${result.revoked_session_count} other device${result.revoked_session_count === 1 ? '' : 's'}`,
+          detail: { revoked_session_count: result.revoked_session_count },
+        })
+      }
+      return context.json({ ...result, account: await readAccount(tenant, session) })
     })
 
     // ---- staff (R04) -------------------------------------------------------

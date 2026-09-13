@@ -48,16 +48,18 @@ function describeProcess(result: ProcessResult): Notice {
       text: `${countLabel(result.held_count, 'message')} will stay held in the outbox until a provider is configured.`,
     }
   }
-  if (result.sent_count === 0 && result.failed_count === 0) {
-    return { severity: 'info', title: 'The outbox is already clear', text: 'There was nothing waiting to send.' }
+  const held = result.held_count > 0 ? ` ${countLabel(result.held_count, 'message')} on a channel with no provider stay held.` : ''
+  if (result.sent_count === 0 && result.failed_count === 0 && result.retry_count === 0) {
+    return { severity: 'info', title: 'Nothing was waiting to send', text: `The configured channels are clear.${held}` }
   }
+  const part = [
+    result.failed_count > 0 ? `${countLabel(result.failed_count, 'message')} failed — each shows the provider’s reason and a Retry button.` : '',
+    result.retry_count > 0 ? `${countLabel(result.retry_count, 'message')} hit a temporary problem and will try again automatically.` : '',
+  ].filter(Boolean)
   return {
-    severity: result.failed_count > 0 ? 'caution' : 'success',
+    severity: result.failed_count > 0 || result.retry_count > 0 ? 'caution' : 'success',
     title: `Sent ${countLabel(result.sent_count, 'message')}`,
-    text:
-      result.failed_count > 0
-        ? `${countLabel(result.failed_count, 'message')} failed — each shows the provider’s reason and a Retry button.`
-        : 'Players will receive them shortly.',
+    text: `${part.length > 0 ? part.join(' ') : 'Players will receive them shortly.'}${held}`,
   }
 }
 
@@ -166,7 +168,11 @@ export function OutboxTab({ can_manage, onChange }: { can_manage: boolean; onCha
         {(view) => (
           <>
             <div className="message-stat">
-              <Stat label="Waiting" value={view.summary.queued_count} hint={view.is_provider_configured ? 'Queued to send' : 'Held until a provider is set'} />
+              <Stat
+                label="Waiting"
+                value={view.summary.queued_count}
+                hint={view.summary.held_count > 0 ? `${view.summary.held_count} held — no provider for that channel` : 'Queued to send'}
+              />
               <Stat label="Sent" value={view.summary.sent_count} />
               <Stat label="Failed" value={view.summary.failed_count} hint={view.summary.failed_count > 0 ? 'Needs a retry' : undefined} />
               <Stat label="Not sent" value={view.summary.suppressed_count} hint="Player blocked contact" />
@@ -196,7 +202,7 @@ export function OutboxTab({ can_manage, onChange }: { can_manage: boolean; onCha
                 />
               )
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0}>
                 <table className="table message-table">
                   <thead>
                     <tr>
@@ -232,6 +238,9 @@ export function OutboxTab({ can_manage, onChange }: { can_manage: boolean; onCha
                                 <Badge tone={badge.tone}>{badge.label}</Badge>
                               </span>
                               {line.status === 'failed' && line.last_error && <span className="message-error">{line.last_error}</span>}
+                              {line.status === 'queued' && line.attempt_count > 0 && line.last_error && (
+                                <span className="muted">Will retry automatically — {line.last_error}</span>
+                              )}
                             </div>
                           </td>
                           <td className="number">{line.attempt_count}</td>

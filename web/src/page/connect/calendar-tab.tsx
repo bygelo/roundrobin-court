@@ -145,7 +145,7 @@ export default function CalendarTab() {
                   }
                 />
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap" tabIndex={0}>
                   <table className="table">
                     <thead>
                       <tr>

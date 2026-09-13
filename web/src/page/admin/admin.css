@@ -224,6 +224,21 @@
   color: var(--muted);
 }
 
+.admin-password {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.admin-password .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.admin-password .button {
+  flex: 0 0 auto;
+}
+
 .admin-fact dd {
   margin: 0;
   color: var(--ink);

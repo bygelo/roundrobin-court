@@ -1,8 +1,9 @@
 // Operator → Membership: who holds a membership or pass, and the plans on sale.
 // Member prices themselves are applied by the booking flow through the member
-// contract; this screen is where the desk enrols, freezes, and cancels.
+// contract; this screen is where the desk enrols, freezes, cancels, and follows
+// recurring billing (renewal badges, billing history, auto-renew).
 
-import { Plus } from '@phosphor-icons/react'
+import { ArrowsClockwise, Plus } from '@phosphor-icons/react'
 import { useState } from 'react'
 import { jsonBody, operatorFetch } from '../../api.ts'
 import {
@@ -30,13 +31,16 @@ import './member.css'
 
 type PlanKindCode = 'membership' | 'pass'
 type PriceRuleCode = 'none' | 'percent_off' | 'fixed_price'
+type BillingPeriodCode = 'monthly' | 'annual'
+type BillingIntervalCode = 'none' | BillingPeriodCode
 
 type MemberPlan = {
   member_plan_id: string
   display_name: string
   plan_kind_code: PlanKindCode
   price_amount: string
-  billing_period_code: 'monthly' | 'annual' | null
+  billing_period_code: BillingPeriodCode | null
+  billing_interval_code: BillingIntervalCode
   price_rule_code: PriceRuleCode
   percent_off: string | null
   fixed_price_amount: string | null
@@ -47,7 +51,18 @@ type MemberPlan = {
   holder_count: number
 }
 
-type MemberStatusCode = 'active' | 'expiring' | 'expired' | 'frozen' | 'cancelled' | 'pass_only'
+type MemberStatusCode = 'active' | 'expiring' | 'expired' | 'frozen' | 'cancelled' | 'pass_only' | 'pending_payment' | 'lapsed'
+type BillingBadgeCode = 'paid_through' | 'due' | 'overdue' | 'lapsed'
+
+type BillingSummary = {
+  is_auto_renew: boolean
+  renewal_state_code: 'pending_payment' | 'active' | 'lapsed'
+  current_period_start_on: string
+  current_period_end_on: string
+  next_renewal_on: string | null
+  badge_code: BillingBadgeCode
+  badge_on: string | null
+}
 
 type Member = {
   party_id: string
@@ -62,7 +77,32 @@ type Member = {
   status_code: MemberStatusCode
   pass_remaining_count: number
   pass: { pass_id: string; plan_name: string; status: string; remaining_count: number | null; valid_until: string }[]
+  billing: BillingSummary | null
 }
+
+type BillingPeriod = {
+  period_index: number
+  period_start_on: string
+  period_end_on: string
+  last_day_on: string
+  due_on: string
+  invoice_code: string | null
+  total_amount: string
+  balance_amount: string
+  status_code: 'paid' | 'unpaid' | 'overdue'
+}
+
+type MemberBilling = Omit<BillingSummary, 'renewal_state_code' | 'current_period_start_on' | 'current_period_end_on' | 'badge_code'> & {
+  membership_id: string
+  is_billed: boolean
+  renewal_state_code: BillingSummary['renewal_state_code'] | null
+  current_period_start_on: string | null
+  current_period_end_on: string | null
+  badge_code: BillingBadgeCode | null
+  period: BillingPeriod[]
+}
+
+type RenewalResult = { invoiced_count: number; activated_count: number; lapsed_count: number }
 
 const STATUS_BADGE: Record<MemberStatusCode, { tone: BadgeTone; label: string }> = {
   active: { tone: 'success', label: 'Active' },
@@ -71,6 +111,14 @@ const STATUS_BADGE: Record<MemberStatusCode, { tone: BadgeTone; label: string }>
   frozen: { tone: 'info', label: 'Frozen' },
   cancelled: { tone: 'danger', label: 'Cancelled' },
   pass_only: { tone: 'info', label: 'Pass holder' },
+  pending_payment: { tone: 'caution', label: 'Awaiting payment' },
+  lapsed: { tone: 'danger', label: 'Lapsed' },
+}
+
+const PERIOD_BADGE: Record<BillingPeriod['status_code'], { tone: BadgeTone; label: string }> = {
+  paid: { tone: 'success', label: 'Paid' },
+  unpaid: { tone: 'caution', label: 'Unpaid' },
+  overdue: { tone: 'danger', label: 'Overdue' },
 }
 
 function loadPlan() {
@@ -80,6 +128,22 @@ function loadPlan() {
 /** The last day a membership covers: ends_at is the start of the first uncovered day. */
 function lastCoveredDay(ends_at: string): string {
   return formatDate(new Date(new Date(ends_at).getTime() - 1))
+}
+
+/** A venue-local date (YYYY-MM-DD) as the desk reads it. Noon avoids any day shift. */
+function formatDay(date: string): string {
+  return formatDate(`${date}T12:00:00+08:00`)
+}
+
+function renewalBadge(billing: BillingSummary): { tone: BadgeTone; label: string } {
+  if (billing.badge_code === 'lapsed') return { tone: 'danger', label: 'Lapsed' }
+  if (billing.badge_code === 'overdue') return { tone: 'danger', label: 'Overdue' }
+  if (billing.badge_code === 'due') return { tone: 'caution', label: billing.badge_on ? `Due ${formatDay(billing.badge_on)}` : 'Due' }
+  return { tone: 'success', label: billing.badge_on ? `Paid through ${formatDay(billing.badge_on)}` : 'Paid' }
+}
+
+function periodWord(code: BillingPeriodCode | null): string {
+  return code === 'annual' ? 'year' : 'month'
 }
 
 type Tab = 'member' | 'plan'
@@ -99,7 +163,8 @@ export default function Page(_prop: PageProp) {
       />
       <Alert severity="info" title="Member prices apply automatically">
         When a member books a court with the same email that is on their membership, the booking shows their member price or uses a
-        pass session — nobody at the desk has to apply it.
+        pass session — nobody at the desk has to apply it. A member on an invoiced plan gets the member price only while their
+        membership is paid.
       </Alert>
       <div style={{ height: 'var(--space-5)' }} />
       <Tabs<Tab>
@@ -143,11 +208,19 @@ function MemberTab({
   const [is_enrolling, setEnrolling] = useState(false)
   const [freezing, setFreezing] = useState<Member>()
   const [cancelling, setCancelling] = useState<Member>()
+  const [viewing, setViewing] = useState<Member>()
   const [notice, setNotice] = useState<string>()
+  const [renewal, setRenewal] = useState<RenewalResult>()
 
   const unfreeze = useAction(async (one: Member) => {
     await operatorFetch(`/api/v1/member/member/${one.membership_id}/unfreeze`, { method: 'POST' })
     setNotice(`${one.display_name}'s membership is active again.`)
+    member.reload()
+  })
+
+  const runRenewal = useAction(async () => {
+    const response = await operatorFetch<{ result: RenewalResult }>('/api/v1/member/renewal/run', { method: 'POST' })
+    setRenewal(response.result)
     member.reload()
   })
 
@@ -171,6 +244,8 @@ function MemberTab({
             { value: '', label: 'Everyone' },
             { value: 'active', label: 'Active' },
             { value: 'expiring', label: 'Expiring within 7 days' },
+            { value: 'pending_payment', label: 'Awaiting payment' },
+            { value: 'lapsed', label: 'Lapsed' },
             { value: 'frozen', label: 'Frozen' },
             { value: 'expired', label: 'Expired' },
             { value: 'cancelled', label: 'Cancelled' },
@@ -178,17 +253,35 @@ function MemberTab({
           ]}
         />
         {can_manage && (
+          <Button
+            tone="secondary"
+            icon={<ArrowsClockwise size={16} aria-hidden />}
+            disabled={runRenewal.is_pending}
+            onClick={() => void runRenewal.run()}
+          >
+            {runRenewal.is_pending ? 'Running…' : 'Run renewals now'}
+          </Button>
+        )}
+        {can_manage && (
           <Button icon={<Plus size={16} aria-hidden />} disabled={!has_plan} onClick={() => setEnrolling(true)}>
             Enrol member
           </Button>
         )}
       </Toolbar>
+      {renewal && (
+        <Alert severity="info" title="Renewals checked" onDismiss={() => setRenewal(undefined)}>
+          {renewal.invoiced_count} renewal {renewal.invoiced_count === 1 ? 'invoice' : 'invoices'} raised ·{' '}
+          {renewal.activated_count} {renewal.activated_count === 1 ? 'membership' : 'memberships'} activated or extended ·{' '}
+          {renewal.lapsed_count} lapsed. This also runs on its own every 15 minutes.
+        </Alert>
+      )}
       {notice && (
         <Alert severity="success" onDismiss={() => setNotice(undefined)}>
           {notice}
         </Alert>
       )}
       <ErrorAlert error={unfreeze.error} onDismiss={unfreeze.clearError} />
+      <ErrorAlert error={runRenewal.error} onDismiss={runRenewal.clearError} />
       <ResourceView resource={member}>
         {(list) =>
           list.length === 0 ? (
@@ -215,7 +308,7 @@ function MemberTab({
                     <th>Member</th>
                     <th>Plan</th>
                     <th>Status</th>
-                    <th>Covered until</th>
+                    <th>Renewal</th>
                     <th className="number">Pass sessions left</th>
                     <th>
                       <span className="visually-hidden">Actions</span>
@@ -226,10 +319,17 @@ function MemberTab({
                   {list.map((one) => {
                     const badge = STATUS_BADGE[one.status_code]
                     const is_live = one.status_code === 'active' || one.status_code === 'expiring'
+                    const renewal_badge = one.billing ? renewalBadge(one.billing) : undefined
                     return (
                       <tr key={one.party_id}>
                         <td>
-                          <strong>{one.display_name}</strong>
+                          {one.membership_id ? (
+                            <button type="button" className="member-name" onClick={() => setViewing(one)}>
+                              {one.display_name}
+                            </button>
+                          ) : (
+                            <strong>{one.display_name}</strong>
+                          )}
                           <div className="member-contact">{[one.email_address, one.phone_number].filter(Boolean).join(' · ')}</div>
                         </td>
                         <td>{one.plan_name ?? (one.pass[0]?.plan_name ?? '—')}</td>
@@ -237,22 +337,42 @@ function MemberTab({
                           <Badge tone={badge.tone}>{badge.label}</Badge>
                           {one.status_code === 'frozen' && one.frozen_until && <div className="muted">until {formatDate(one.frozen_until)}</div>}
                         </td>
-                        <td>{one.ends_at ? lastCoveredDay(one.ends_at) : '—'}</td>
+                        <td>
+                          {one.billing && renewal_badge ? (
+                            <>
+                              <Badge tone={renewal_badge.tone}>{renewal_badge.label}</Badge>
+                              <div className="member-renewal">
+                                {one.billing.next_renewal_on
+                                  ? `Renews ${formatDay(one.billing.next_renewal_on)}`
+                                  : one.billing.renewal_state_code === 'lapsed'
+                                    ? 'Renewal unpaid'
+                                    : 'Auto-renew off'}
+                              </div>
+                            </>
+                          ) : one.ends_at ? (
+                            <span className="member-renewal">Covered until {lastCoveredDay(one.ends_at)}</span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className="number member-pass-count">{one.pass.length > 0 ? one.pass_remaining_count : '—'}</td>
                         <td>
-                          {can_manage && one.membership_id && (
+                          {one.membership_id && (
                             <div className="row">
-                              {is_live && (
+                              <Button tone="quiet" size="sm" onClick={() => setViewing(one)}>
+                                Billing
+                              </Button>
+                              {can_manage && is_live && (
                                 <Button tone="secondary" size="sm" onClick={() => setFreezing(one)}>
                                   Freeze
                                 </Button>
                               )}
-                              {one.status_code === 'frozen' && (
+                              {can_manage && one.status_code === 'frozen' && (
                                 <Button tone="secondary" size="sm" disabled={unfreeze.is_pending} onClick={() => void unfreeze.run(one)}>
                                   Unfreeze
                                 </Button>
                               )}
-                              {(is_live || one.status_code === 'frozen') && (
+                              {can_manage && (is_live || one.status_code === 'frozen' || one.status_code === 'pending_payment' || one.status_code === 'lapsed') && (
                                 <Button tone="quiet" size="sm" onClick={() => setCancelling(one)}>
                                   Cancel
                                 </Button>
@@ -300,7 +420,117 @@ function MemberTab({
           }}
         />
       )}
+      {viewing && (
+        <MemberDialog
+          member={viewing}
+          can_manage={can_manage}
+          onClose={() => {
+            setViewing(undefined)
+            member.reload()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function MemberDialog({ member, can_manage, onClose }: { member: Member; can_manage: boolean; onClose: () => void }) {
+  const billing = useResource(
+    () =>
+      operatorFetch<{ billing: MemberBilling }>(`/api/v1/member/member/${member.membership_id}/billing`).then((result) => result.billing),
+    [member.membership_id],
+  )
+  const toggle = useAction(async (is_auto_renew: boolean) => {
+    await operatorFetch(`/api/v1/member/member/${member.membership_id}/auto-renew`, jsonBody({ is_auto_renew }))
+    billing.reload()
+  })
+
+  return (
+    <Dialog
+      open
+      title={member.display_name}
+      onClose={onClose}
+      footer={
+        <Button tone="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <p className="muted">
+        {member.plan_name ?? 'Membership'} · {STATUS_BADGE[member.status_code].label}
+      </p>
+      <ResourceView resource={billing}>
+        {(view) =>
+          !view.is_billed ? (
+            <Alert severity="info" title="Not invoiced">
+              This plan is collected at the desk, so there is no billing history or automatic renewal.
+            </Alert>
+          ) : (
+            <div className="stack">
+              <div className="member-billing-summary">
+                {view.current_period_start_on && view.current_period_end_on && (
+                  <p>
+                    Current period {formatDay(view.current_period_start_on)} – {formatDay(view.current_period_end_on)} (ends before the
+                    last date)
+                  </p>
+                )}
+                {view.renewal_state_code === 'pending_payment' && (
+                  <Alert severity="caution">The first invoice is unpaid. Member prices start once it is paid.</Alert>
+                )}
+                {view.renewal_state_code === 'lapsed' && (
+                  <Alert severity="danger">
+                    The renewal went unpaid past the 7-day grace. Member prices are off until the renewal invoice is paid.
+                  </Alert>
+                )}
+              </div>
+              <Checkbox
+                label="Renew automatically — raise the next invoice 3 days before the period ends"
+                checked={view.is_auto_renew}
+                disabled={!can_manage || toggle.is_pending}
+                onChange={(event) => void toggle.run(event.target.checked)}
+              />
+              <ErrorAlert error={toggle.error} onDismiss={toggle.clearError} />
+              <div className="table-wrap">
+                <table className="table member-billing-table">
+                  <thead>
+                    <tr>
+                      <th>Period</th>
+                      <th>Invoice</th>
+                      <th className="number">Amount</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {view.period.map((one) => {
+                      const badge = PERIOD_BADGE[one.status_code]
+                      return (
+                        <tr key={one.period_index}>
+                          <td>
+                            {formatDay(one.period_start_on)} – {formatDay(one.last_day_on)}
+                          </td>
+                          <td className="member-invoice-code">{one.invoice_code ?? '—'}</td>
+                          <td className="number">
+                            {formatMoney(one.total_amount)}
+                            {one.status_code !== 'paid' && Number(one.balance_amount) < Number(one.total_amount) && (
+                              <div className="muted">{formatMoney(one.balance_amount)} left</div>
+                            )}
+                          </td>
+                          <td>
+                            <Badge tone={badge.tone}>{badge.label}</Badge>
+                            {one.status_code !== 'paid' && <div className="muted">due {formatDay(one.due_on)}</div>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted">Once an invoice is paid in billing, the membership activates or extends on the next renewal check.</p>
+            </div>
+          )
+        }
+      </ResourceView>
+    </Dialog>
   )
 }
 
@@ -312,13 +542,20 @@ function EnrolDialog({ plan, onClose, onDone }: { plan: MemberPlan[]; onClose: (
   const [starts_on, setStartsOn] = useState(toDateInput(new Date()))
   const chosen = plan.find((one) => one.member_plan_id === plan_id)
   const is_pass = chosen?.plan_kind_code === 'pass'
+  const is_billed = chosen !== undefined && chosen.billing_interval_code !== 'none'
 
   const enrol = useAction(async () => {
     await operatorFetch(
       is_pass ? '/api/v1/member/pass' : '/api/v1/member/member',
       jsonBody({ plan_id, display_name, email, phone, ...(is_pass ? {} : { starts_on }) }),
     )
-    onDone(is_pass ? `${display_name} now holds a ${chosen?.display_name}.` : `${display_name} is enrolled on ${chosen?.display_name}.`)
+    onDone(
+      is_pass
+        ? `${display_name} now holds a ${chosen?.display_name}.`
+        : is_billed
+          ? `${display_name} is enrolled on ${chosen?.display_name}. Their first invoice is open — member prices start once it is paid.`
+          : `${display_name} is enrolled on ${chosen?.display_name}.`,
+    )
   })
 
   return (
@@ -344,10 +581,16 @@ function EnrolDialog({ plan, onClose, onDone }: { plan: MemberPlan[]; onClose: (
           onChange={(event) => setPlanId(event.target.value)}
           option={plan.map((one) => ({
             value: one.member_plan_id,
-            label: `${one.display_name} — ${formatMoney(one.price_amount)}${one.plan_kind_code === 'pass' ? ' pass' : one.billing_period_code === 'annual' ? ' / year' : ' / month'}`,
+            label: `${one.display_name} — ${formatMoney(one.price_amount)}${one.plan_kind_code === 'pass' ? ' pass' : ` / ${periodWord(one.billing_period_code)}`}`,
           }))}
         />
         {chosen && <p className="muted">{chosen.rule_sentence}</p>}
+        {is_billed && (
+          <Alert severity="info">
+            Enrolling raises an invoice for the first {periodWord(chosen.billing_period_code)} ({formatMoney(chosen.price_amount)}). It renews
+            automatically.
+          </Alert>
+        )}
         <TextInput label="Full name" required value={display_name} onChange={(event) => setName(event.target.value)} />
         <TextInput
           label="Email"
@@ -387,7 +630,7 @@ function FreezeDialog({ member, onClose, onDone }: { member: Member; onClose: ()
         </>
       }
     >
-      <p>While frozen, {member.display_name} books at the regular price. Unfreeze any time.</p>
+      <p>While frozen, {member.display_name} books at the regular price and no renewal invoice is raised. Unfreeze any time.</p>
       <TextInput label="Frozen until" type="date" value={until} onChange={(event) => setUntil(event.target.value)} />
       <ErrorAlert error={freeze.error} onDismiss={freeze.clearError} />
     </Dialog>
@@ -416,7 +659,8 @@ function CancelDialog({ member, onClose, onDone }: { member: Member; onClose: ()
       }
     >
       <Alert severity="caution" title="This cannot be undone">
-        Member prices stop immediately. Bookings already made keep the price they were booked at. Pass sessions are not affected.
+        Member prices and renewals stop immediately. Bookings already made keep the price they were booked at. Pass sessions are not
+        affected. An invoice already raised stays open in billing.
       </Alert>
       <ErrorAlert error={cancel.error} onDismiss={cancel.clearError} />
     </Dialog>
@@ -427,6 +671,7 @@ function CancelDialog({ member, onClose, onDone }: { member: Member; onClose: ()
 
 function PlanTab({ plan, can_manage }: { plan: ReturnType<typeof useResource<MemberPlan[]>>; can_manage: boolean }) {
   const [is_creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<MemberPlan>()
   const [notice, setNotice] = useState<string>()
   return (
     <div className="stack">
@@ -457,13 +702,27 @@ function PlanTab({ plan, can_manage }: { plan: ReturnType<typeof useResource<Mem
                   <p className="member-plan__price">
                     {formatMoney(one.price_amount)}{' '}
                     <span className="member-plan__period">
-                      {one.plan_kind_code === 'pass' ? 'one-time' : one.billing_period_code === 'annual' ? 'per year' : 'per month'}
+                      {one.plan_kind_code === 'pass' ? 'one-time' : `per ${periodWord(one.billing_period_code)}`}
                     </span>
                   </p>
                   <p className="member-plan__rule">{one.rule_sentence}</p>
+                  {one.plan_kind_code === 'membership' && (
+                    <p className="member-plan__billing">
+                      {one.billing_interval_code === 'none'
+                        ? 'Collected at the desk — no invoice'
+                        : `Invoiced ${one.billing_interval_code === 'annual' ? 'yearly' : 'monthly'} · renews automatically`}
+                    </p>
+                  )}
                   <p className="muted">
                     {one.holder_count === 1 ? '1 current holder' : `${one.holder_count} current holders`}
                   </p>
+                  {can_manage && one.plan_kind_code === 'membership' && (
+                    <div>
+                      <Button tone="secondary" size="sm" onClick={() => setEditing(one)}>
+                        Edit price and billing
+                      </Button>
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
@@ -480,7 +739,62 @@ function PlanTab({ plan, can_manage }: { plan: ReturnType<typeof useResource<Mem
           }}
         />
       )}
+      {editing && (
+        <PlanEditDialog
+          plan={editing}
+          onClose={() => setEditing(undefined)}
+          onDone={(name) => {
+            setEditing(undefined)
+            setNotice(`${name} is updated. New prices apply from the next invoice.`)
+            plan.reload()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function PlanEditDialog({ plan, onClose, onDone }: { plan: MemberPlan; onClose: () => void; onDone: (name: string) => void }) {
+  const [price_amount, setPrice] = useState(plan.price_amount)
+  const [is_invoiced, setInvoiced] = useState(plan.billing_interval_code !== 'none')
+  const save = useAction(async () => {
+    await operatorFetch(
+      `/api/v1/member/plan/${plan.member_plan_id}`,
+      jsonBody({ price_amount, billing_interval_code: is_invoiced ? plan.billing_period_code : 'none' }, 'PATCH'),
+    )
+    onDone(plan.display_name)
+  })
+  return (
+    <Dialog
+      open
+      title={`Edit ${plan.display_name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button tone="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={save.is_pending || !price_amount.trim()} onClick={() => void save.run()}>
+            {save.is_pending ? 'Saving…' : 'Save'}
+          </Button>
+        </>
+      }
+    >
+      <form className="form" onSubmit={(event) => event.preventDefault()}>
+        <TextInput label={`Price per ${periodWord(plan.billing_period_code)} (₱)`} inputMode="decimal" value={price_amount} onChange={(event) => setPrice(event.target.value)} />
+        <SelectInput
+          label="Billing"
+          value={is_invoiced ? 'invoice' : 'none'}
+          onChange={(event) => setInvoiced(event.target.value === 'invoice')}
+          option={[
+            { value: 'none', label: 'Collected at the desk — no invoice' },
+            { value: 'invoice', label: `Invoice every ${periodWord(plan.billing_period_code)}, renew automatically` },
+          ]}
+        />
+        <p className="muted">Invoices already raised keep their amount. Turning invoicing on applies to members enrolled from now on.</p>
+        <ErrorAlert error={save.error} onDismiss={save.clearError} />
+      </form>
+    </Dialog>
   )
 }
 
@@ -488,7 +802,8 @@ function PlanDialog({ onClose, onDone }: { onClose: () => void; onDone: (name: s
   const [kind, setKind] = useState<PlanKindCode>('membership')
   const [display_name, setName] = useState('')
   const [price_amount, setPrice] = useState('')
-  const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly')
+  const [period, setPeriod] = useState<BillingPeriodCode>('monthly')
+  const [is_invoiced, setInvoiced] = useState(true)
   const [rule, setRule] = useState<PriceRuleCode>('percent_off')
   const [percent_off, setPercent] = useState('20')
   const [fixed_price_amount, setFixed] = useState('')
@@ -521,6 +836,7 @@ function PlanDialog({ onClose, onDone }: { onClose: () => void; onDone: (name: s
               plan_kind_code: 'membership',
               price_amount,
               billing_period_code: period,
+              billing_interval_code: is_invoiced ? period : 'none',
               price_rule_code: rule,
               ...(rule === 'percent_off' ? { percent_off } : {}),
               ...(rule === 'fixed_price' ? { fixed_price_amount } : {}),
@@ -562,9 +878,9 @@ function PlanDialog({ onClose, onDone }: { onClose: () => void; onDone: (name: s
           <TextInput label="Price (₱)" inputMode="decimal" required value={price_amount} onChange={(event) => setPrice(event.target.value)} />
           {kind === 'membership' ? (
             <SelectInput
-              label="Billed"
+              label="Period"
               value={period}
-              onChange={(event) => setPeriod(event.target.value as 'monthly' | 'annual')}
+              onChange={(event) => setPeriod(event.target.value as BillingPeriodCode)}
               option={[
                 { value: 'monthly', label: 'Monthly' },
                 { value: 'annual', label: 'Annually' },
@@ -576,6 +892,16 @@ function PlanDialog({ onClose, onDone }: { onClose: () => void; onDone: (name: s
         </div>
         {kind === 'membership' ? (
           <>
+            <SelectInput
+              label="Billing interval"
+              hint="Invoiced plans raise each period's invoice and renew on their own; a member gets the member price while paid."
+              value={is_invoiced ? period : 'none'}
+              onChange={(event) => setInvoiced(event.target.value !== 'none')}
+              option={[
+                { value: period, label: period === 'annual' ? 'Invoice annually' : 'Invoice monthly' },
+                { value: 'none', label: 'None — collect at the desk' },
+              ]}
+            />
             <div className="form__row">
               <SelectInput
                 label="Member price on court bookings"

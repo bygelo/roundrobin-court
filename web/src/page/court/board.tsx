@@ -241,7 +241,14 @@ function BoardView({ board, is_manager, onOpen }: { board: Board; is_manager: bo
       </ul>
 
       {/* desktop: timeline */}
-      <div ref={timeline_ref} className="court-timeline" style={{ ['--court-hour-count' as string]: hour_count }}>
+      <div
+        ref={timeline_ref}
+        className="court-timeline"
+        style={{ ['--court-hour-count' as string]: hour_count }}
+        tabIndex={0}
+        role="region"
+        aria-label="Court timeline (scrolls sideways)"
+      >
         <div className="court-timeline__grid">
           <div className="court-timeline__head" aria-hidden>
             <div className="court-timeline__name">Court</div>

@@ -8,6 +8,9 @@ export const DEFAULT_TIME_ZONE = 'Asia/Manila'
 export type PriceRuleCode = 'none' | 'percent_off' | 'fixed_price'
 export type PlanKindCode = 'membership' | 'pass'
 export type BillingPeriodCode = 'monthly' | 'annual'
+/** How a membership plan is invoiced: not at all (collected by hand), or every period. */
+export type BillingIntervalCode = 'none' | BillingPeriodCode
+export type RenewalStateCode = 'pending_payment' | 'active' | 'lapsed'
 
 export type PriceRule = {
   price_rule_code: PriceRuleCode
@@ -123,21 +126,98 @@ export function addMonth(date: string, month_count: number): string {
   return target.toISOString().slice(0, 10)
 }
 
+// ---------------------------------------------------------------------------
+// recurring billing
+// ---------------------------------------------------------------------------
+
+/** A renewal invoice is raised this many days before the period ends. */
+export const RENEWAL_LEAD_DAY_COUNT = 3
+/** An unpaid renewal lapses the membership this many days after the period ended. */
+export const RENEWAL_GRACE_DAY_COUNT = 7
+
+/**
+ * Period `period_index` of a membership billed from `anchor_on`, as local dates
+ * (end exclusive). Always counted from the anchor, never chained from the last
+ * period, so a Jan 31 member renews Feb 28, then Mar 31 — not Mar 28.
+ */
+export function billingPeriod(
+  anchor_on: string,
+  period_index: number,
+  billing_period_code: BillingPeriodCode,
+): { period_start_on: string; period_end_on: string } {
+  const month = billing_period_code === 'annual' ? 12 : 1
+  return {
+    period_start_on: addMonth(anchor_on, period_index * month),
+    period_end_on: addMonth(anchor_on, (period_index + 1) * month),
+  }
+}
+
+/** When a period's invoice falls due: a renewal on its first day; the first period after the grace. */
+export function periodDueOn(period_index: number, period_start_on: string): string {
+  return period_index === 0 ? addDay(period_start_on, RENEWAL_GRACE_DAY_COUNT) : period_start_on
+}
+
+export type PeriodStatusCode = 'paid' | 'unpaid' | 'overdue'
+
+export function periodStatus(input: { invoice_status: string | null; due_on: string; today: string }): PeriodStatusCode {
+  if (input.invoice_status === 'paid') return 'paid'
+  return input.today >= input.due_on ? 'overdue' : 'unpaid'
+}
+
+export type BillingBadgeCode = 'paid_through' | 'due' | 'overdue' | 'lapsed'
+
+/** The one badge the members table shows for a billed membership. */
+export function billingBadge(input: {
+  renewal_state_code: RenewalStateCode
+  current_period_start_on: string
+  current_period_end_on: string
+  next_invoice_status: string | null
+  today: string
+}): { badge_code: BillingBadgeCode; badge_on: string | null } {
+  if (input.renewal_state_code === 'lapsed') return { badge_code: 'lapsed', badge_on: input.current_period_end_on }
+  if (input.renewal_state_code === 'pending_payment') {
+    const due_on = periodDueOn(0, input.current_period_start_on)
+    return input.today >= due_on ? { badge_code: 'overdue', badge_on: due_on } : { badge_code: 'due', badge_on: due_on }
+  }
+  if (input.next_invoice_status !== null && input.next_invoice_status !== 'paid' && input.next_invoice_status !== 'void') {
+    return input.today >= input.current_period_end_on
+      ? { badge_code: 'overdue', badge_on: input.current_period_end_on }
+      : { badge_code: 'due', badge_on: input.current_period_end_on }
+  }
+  return { badge_code: 'paid_through', badge_on: addDay(input.current_period_end_on, -1) }
+}
+
 /** The first local day a membership starting on `starts_on` no longer covers. */
 export function periodEnd(starts_on: string, billing_period_code: BillingPeriodCode): string {
   return addMonth(starts_on, billing_period_code === 'annual' ? 12 : 1)
 }
 
-export type MemberStatusCode = 'active' | 'expiring' | 'expired' | 'frozen' | 'cancelled' | 'pass_only'
+export type MemberStatusCode =
+  | 'active'
+  | 'expiring'
+  | 'expired'
+  | 'frozen'
+  | 'cancelled'
+  | 'pass_only'
+  | 'pending_payment'
+  | 'lapsed'
 
 export const EXPIRING_DAY_COUNT = 7
 
 /** Operator-facing status: the pack's status, plus expiring/expired read from the clock. */
-export function memberStatus(input: { status: string | null; ends_at: Date | null; now: Date }): MemberStatusCode {
+export function memberStatus(input: {
+  status: string | null
+  ends_at: Date | null
+  now: Date
+  renewal_state_code?: string | null
+}): MemberStatusCode {
   if (input.status === null) return 'pass_only'
   if (input.status === 'frozen') return 'frozen'
   if (input.status === 'cancelled') return 'cancelled'
   if (input.status === 'expired') return 'expired'
+  // A billed membership waits in the pack's past_due status: first invoice not
+  // yet paid (pending_payment) or a renewal unpaid past the grace (lapsed).
+  if (input.status === 'past_due') return input.renewal_state_code === 'lapsed' ? 'lapsed' : 'pending_payment'
   if (input.ends_at && input.ends_at.getTime() <= input.now.getTime()) return 'expired'
   if (input.ends_at && input.ends_at.getTime() - input.now.getTime() <= EXPIRING_DAY_COUNT * 86_400_000) return 'expiring'
   return 'active'

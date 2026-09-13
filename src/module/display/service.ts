@@ -4,12 +4,14 @@
 
 import { DomainError, listEnabledModuleCode, type TenantContext, type Uuid } from '@bygelo/roundrobin-kernel'
 import { createConfiguration, mintDevice, revokeDevice } from '@bygelo/roundrobin-output'
+import { renderQrSvg } from '@bygelo/roundrobin-scan'
 import { listLivePlay } from '../play/contract.ts'
 import { isUuid, listMatch, type MatchView } from '../score/service.ts'
+import { defaultPublicSite, readStoredDocument, type HeadingFont } from '../studio/schema.ts'
 
 export class DisplayError extends DomainError {}
 
-export const DISPLAY_KIND = ['court', 'lounge', 'counter'] as const
+export const DISPLAY_KIND = ['court', 'lounge', 'counter', 'kiosk'] as const
 export type DisplayKind = (typeof DISPLAY_KIND)[number]
 
 export type ScreenStatus = 'online' | 'stale' | 'offline' | 'revoked'
@@ -36,6 +38,12 @@ export type ScreenView = {
   config_version: number
   reported_config_version: number | null
   is_config_behind: boolean
+  /** The Studio version the venue has published now (0 = unbranded default). */
+  site_version_number: number
+  /** The Studio version this screen last said it rendered; null until it reports. */
+  reported_site_version_number: number | null
+  site_version_reported_at: string | null
+  is_site_behind: boolean
   created_at: string
   revoked_at: string | null
 }
@@ -52,6 +60,8 @@ type ScreenRow = {
   last_seen_at: Date | null
   config_version: number
   reported_config_version: number | null
+  reported_site_version_number: number | null
+  site_version_reported_at: Date | null
   created_at: Date
   revoked_at: Date | null
 }
@@ -61,11 +71,12 @@ function iso(value: Date | null): string | null {
 }
 
 async function selectScreen(tenant: TenantContext, display_screen_id: string | null): Promise<ScreenView[]> {
+  const { site_version_number } = await readSiteBrand(tenant)
   // Status is derived on the store clock, like the output pack's own health_status.
   const row = await tenant.query<ScreenRow[]>`
     SELECT s.display_screen_id, s.kind, s.display_name, s.resource_id, r.display_name AS court_display_name,
            d.credential_prefix, d.enrolled_at, d.last_seen_at, d.reported_config_version, d.revoked_at,
-           c.config_version, s.created_at,
+           c.config_version, s.created_at, s.reported_site_version_number, s.site_version_reported_at,
            CASE
              WHEN d.revoked_at IS NOT NULL OR NOT d.is_active THEN 'revoked'
              WHEN d.last_seen_at IS NULL THEN 'offline'
@@ -83,6 +94,7 @@ async function selectScreen(tenant: TenantContext, display_screen_id: string | n
     ORDER BY (d.revoked_at IS NOT NULL), s.kind, r.sort_order NULLS FIRST, s.display_name`
   return row.map((one) => {
     const reported = one.reported_config_version === null ? null : Number(one.reported_config_version)
+    const reported_site = one.reported_site_version_number === null ? null : Number(one.reported_site_version_number)
     return {
       display_screen_id: one.display_screen_id,
       kind: one.kind,
@@ -96,6 +108,11 @@ async function selectScreen(tenant: TenantContext, display_screen_id: string | n
       config_version: Number(one.config_version),
       reported_config_version: reported,
       is_config_behind: reported !== null && reported !== Number(one.config_version),
+      site_version_number,
+      reported_site_version_number: reported_site,
+      site_version_reported_at: iso(one.site_version_reported_at),
+      // A rollback appends a new, higher version, so any difference means behind.
+      is_site_behind: reported_site !== null && reported_site !== site_version_number,
       created_at: iso(one.created_at)!,
       revoked_at: iso(one.revoked_at),
     }
@@ -114,7 +131,7 @@ export async function createScreen(
   tenant: TenantContext,
   input: { kind: unknown; display_name: unknown; resource_id?: unknown; actor_id?: string | null },
 ): Promise<{ screen: ScreenView; credential: string; enrolment_path: string }> {
-  if (!isDisplayKind(input.kind)) throw new DisplayError('kind must be court, lounge, or counter', 400)
+  if (!isDisplayKind(input.kind)) throw new DisplayError('kind must be court, lounge, counter, or kiosk', 400)
   const kind = input.kind
   const display_name = typeof input.display_name === 'string' ? input.display_name.trim() : ''
   if (!display_name) throw new DisplayError('Give the screen a name, like "Lounge TV"', 400)
@@ -144,7 +161,8 @@ export async function createScreen(
     (
       await createConfiguration(tenant, {
         configuration_code,
-        display_name: kind === 'court' ? `${court_display_name} scoreboard` : kind === 'lounge' ? 'Lounge board' : 'Counter',
+        display_name:
+          kind === 'court' ? `${court_display_name} scoreboard` : kind === 'lounge' ? 'Lounge board' : kind === 'kiosk' ? 'Lobby kiosk' : 'Counter',
         payload: { kind, resource_id },
         stale_after_second: STALE_AFTER_SECOND,
       })
@@ -258,8 +276,6 @@ export type CounterProjection = {
   player_expected_count: number
   open_play_now_count: number
 }
-
-export type ScreenProjection = CourtProjection | LoungeProjection | CounterProjection
 
 function toLiveScore(match: MatchView): LiveScore {
   return {
@@ -462,9 +478,223 @@ async function buildCounterProjection(tenant: TenantContext, enabled: string[]):
   }
 }
 
-export async function buildProjection(tenant: TenantContext, screen: ScreenIdentity): Promise<ScreenProjection> {
+/** How far ahead the kiosk looks for open court slots (capped at the end of today). */
+export const KIOSK_HORIZON_HOUR = 4
+/** Open slots listed per court on the kiosk. */
+export const KIOSK_SLOT_PER_COURT = 4
+
+export type KioskProjection = {
+  court: {
+    display_name: string
+    sport_display_name: string | null
+    open_slot: { starts_at: string; ends_at: string; price_amount: string }[]
+  }[]
+  /** Open play running now or starting within the hour. Counts only — never who is playing or waiting. */
+  open_play: {
+    display_name: string
+    starts_at: string
+    ends_at: string
+    is_now: boolean
+    court_count: number
+    waiting_count: number
+  }[]
+  /** Programs starting later today. Seat counts only — never who registered. */
+  program: {
+    title: string
+    kind_code: string
+    starts_at: string
+    ends_at: string
+    seat_open_count: number
+    price_amount: string
+  }[]
+  /** Null when the booking portal is off: there is nothing to book on a phone. */
+  booking: { path: string; url: string; qr_svg: string } | null
+}
+
+export type ScreenProjection = CourtProjection | LoungeProjection | CounterProjection | KioskProjection
+
+/** Where a phone should open the booking page: an absolute http(s) origin, or undefined. */
+export function normaliseOrigin(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 200) return undefined
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function buildKioskProjection(tenant: TenantContext, enabled: string[], origin: string | undefined): Promise<KioskProjection> {
+  const time_zone = await readVenueTimeZone(tenant)
+  const slot = await tenant.query<{
+    resource_id: Uuid
+    starts_at: Date
+    ends_at: Date
+    price_amount: string
+  }[]>`
+    WITH day AS (
+      SELECT (date_trunc('day', now() AT TIME ZONE ${time_zone}) + interval '1 day') AT TIME ZONE ${time_zone} AS ends_at
+    )
+    SELECT r.resource_id, s.starts_at, s.ends_at, s.price_amount
+    FROM session s
+    CROSS JOIN day
+    JOIN session_resource sr ON sr.session_id = s.session_id
+    JOIN resource r ON r.resource_id = sr.resource_id AND r.organization_id = s.organization_id
+    WHERE s.organization_id = ${tenant.organization_id}
+      AND s.deleted_at IS NULL AND s.is_published
+      AND r.deleted_at IS NULL AND r.is_bookable
+      AND s.starts_at > now()
+      AND s.starts_at < LEAST(day.ends_at, now() + make_interval(hours => ${KIOSK_HORIZON_HOUR}))
+      AND NOT EXISTS (
+        SELECT 1 FROM booking b
+        WHERE b.organization_id = s.organization_id AND b.resource_id = r.resource_id
+          AND b.status IN ('hold', 'confirmed')
+          AND tstzrange(b.starts_at, b.ends_at, '[)') && tstzrange(s.starts_at, s.ends_at, '[)'))
+      AND NOT EXISTS (
+        SELECT 1 FROM closure c
+        WHERE c.organization_id = s.organization_id
+          AND (c.resource_id = r.resource_id OR (c.resource_id IS NULL AND (c.site_id IS NULL OR c.site_id = s.site_id)))
+          AND tstzrange(c.starts_at, c.ends_at, '[)') && tstzrange(s.starts_at, s.ends_at, '[)'))
+    ORDER BY r.resource_id, s.starts_at`
+  const by_court = new Map<string, KioskProjection['court'][number]['open_slot']>()
+  for (const one of slot) {
+    const list = by_court.get(one.resource_id) ?? []
+    if (list.length < KIOSK_SLOT_PER_COURT) {
+      list.push({ starts_at: iso(one.starts_at)!, ends_at: iso(one.ends_at)!, price_amount: String(one.price_amount) })
+    }
+    by_court.set(one.resource_id, list)
+  }
+  const court = (await readCourt(tenant, null)).map((one) => ({
+    display_name: one.display_name,
+    sport_display_name: one.sport_display_name,
+    open_slot: by_court.get(one.resource_id) ?? [],
+  }))
+
+  const now = Date.now()
+  const play = enabled.includes('play') ? await listLivePlay(tenant) : []
+  const open_play = play.map((one) => ({
+    display_name: one.display_name,
+    starts_at: one.starts_at,
+    ends_at: one.ends_at,
+    is_now: new Date(one.starts_at).getTime() <= now,
+    court_count: one.court.length,
+    waiting_count: one.waiting_count,
+  }))
+
+  let program: KioskProjection['program'] = []
+  const [table] = await tenant.query<{ is_present: boolean }[]>`
+    SELECT to_regclass('public.program_occurrence') IS NOT NULL
+       AND to_regclass('public.program_registration') IS NOT NULL AS is_present`
+  if (enabled.includes('program') && table?.is_present) {
+    const row = await tenant.query<{
+      title: string
+      kind_code: string
+      starts_at: Date
+      ends_at: Date
+      capacity_count: number
+      taken_count: number
+      price_amount: string
+    }[]>`
+      WITH day AS (
+        SELECT (date_trunc('day', now() AT TIME ZONE ${time_zone}) + interval '1 day') AT TIME ZONE ${time_zone} AS ends_at
+      )
+      SELECT p.title, p.kind_code, o.starts_at, o.ends_at, o.capacity_count, p.price_amount,
+             (SELECT count(*)::int FROM program_registration g
+               WHERE g.organization_id = o.organization_id AND g.program_occurrence_id = o.program_occurrence_id
+                 AND g.status_code IN ('registered', 'attended')) AS taken_count
+      FROM program_occurrence o
+      CROSS JOIN day
+      JOIN program p ON p.organization_id = o.organization_id AND p.program_id = o.program_id
+      WHERE o.organization_id = ${tenant.organization_id}
+        AND o.status_code = 'scheduled'
+        AND p.deleted_at IS NULL AND p.is_published AND NOT p.is_member_only
+        AND p.kind_code <> 'private_event'
+        AND o.ends_at > now() AND o.starts_at < day.ends_at
+      ORDER BY o.starts_at, p.title
+      LIMIT 6`
+    program = row.map((one) => ({
+      title: one.title,
+      kind_code: one.kind_code,
+      starts_at: iso(one.starts_at)!,
+      ends_at: iso(one.ends_at)!,
+      seat_open_count: Math.max(0, Number(one.capacity_count) - Number(one.taken_count)),
+      price_amount: String(one.price_amount),
+    }))
+  }
+
+  let booking: KioskProjection['booking'] = null
+  if (enabled.includes('portal')) {
+    const [organization] = await tenant.query<{ organization_code: string }[]>`
+      SELECT organization_code FROM organization WHERE organization_id = ${tenant.organization_id}`
+    if (organization) {
+      const path = `/v/${encodeURIComponent(organization.organization_code)}`
+      const url = `${origin ?? ''}${path}`
+      booking = { path, url, qr_svg: renderQrSvg(url, { level: 'M', quiet_zone: 4, title: 'Scan to book a court on your phone' }) }
+    }
+  }
+
+  return { court, open_play, program, booking }
+}
+
+export async function buildProjection(
+  tenant: TenantContext,
+  screen: ScreenIdentity,
+  option: { origin?: string | undefined } = {},
+): Promise<ScreenProjection> {
   const enabled = await listEnabledModuleCode(tenant)
   if (screen.kind === 'court') return buildCourtProjection(tenant, screen, enabled)
   if (screen.kind === 'lounge') return buildLoungeProjection(tenant, enabled)
+  if (screen.kind === 'kiosk') return buildKioskProjection(tenant, enabled, option.origin)
   return buildCounterProjection(tenant, enabled)
+}
+
+// ---------------------------------------------------------------------------
+// Studio brand — what every screen is dressed in
+// ---------------------------------------------------------------------------
+
+export type SiteBrand = {
+  /** The published studio_version.version_number, or 0 for the unbranded default. */
+  site_version_number: number
+  display_name: string
+  accent: string
+  action: string
+  heading_font: HeadingFont
+}
+
+/**
+ * The venue's published Studio version and brand tokens, read-only. Falls back
+ * to the default site (version 0) when Studio is off or nothing is published —
+ * the same rule the public portal follows.
+ */
+export async function readSiteBrand(tenant: TenantContext): Promise<SiteBrand> {
+  const enabled = await listEnabledModuleCode(tenant)
+  const [organization] = await tenant.query<{ organization_code: string; display_name: string }[]>`
+    SELECT organization_code, display_name FROM organization WHERE organization_id = ${tenant.organization_id}`
+  const venue_name = organization?.display_name ?? ''
+  const [publication] = enabled.includes('studio')
+    ? await tenant.query<{ version_number: number; document: unknown }[]>`
+        SELECT v.version_number, v.document
+        FROM studio_publication p
+        JOIN studio_version v ON v.organization_id = p.organization_id AND v.studio_version_id = p.studio_version_id
+        WHERE p.organization_id = ${tenant.organization_id}`
+    : []
+  if (!publication) {
+    const site = defaultPublicSite(organization?.organization_code ?? '', venue_name, enabled)
+    return { site_version_number: 0, display_name: site.display_name, ...pickToken(site.token) }
+  }
+  const raw = typeof publication.document === 'string' ? (JSON.parse(publication.document) as unknown) : publication.document
+  const document = readStoredDocument(raw, venue_name)
+  return { site_version_number: Number(publication.version_number), display_name: document.display_name, ...pickToken(document.token) }
+}
+
+function pickToken(token: { accent: string; action: string; heading_font: HeadingFont }): Pick<SiteBrand, 'accent' | 'action' | 'heading_font'> {
+  return { accent: token.accent, action: token.action, heading_font: token.heading_font }
+}
+
+/** Record the Studio version a screen says it last rendered. */
+export async function recordSiteVersion(tenant: TenantContext, display_screen_id: string, site_version_number: number): Promise<void> {
+  await tenant.query`
+    UPDATE display_screen
+    SET reported_site_version_number = ${site_version_number}, site_version_reported_at = now()
+    WHERE organization_id = ${tenant.organization_id} AND display_screen_id = ${display_screen_id}`
 }

@@ -7,3 +7,15 @@
 
 .member-contact { color: var(--muted); font-size: 0.85rem; }
 .member-pass-count { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Recurring billing: renewal badge, member detail history. */
+.member-plan__billing { color: var(--muted); font-size: 0.9rem; }
+.member-name { background: none; border: 0; color: var(--ink); cursor: pointer; font: inherit; font-weight: 700; padding: 0; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.member-renewal { color: var(--muted); font-size: 0.85rem; margin-top: var(--space-1, 4px); white-space: nowrap; }
+.member-invoice-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; overflow-wrap: anywhere; }
+.member-billing-table td { vertical-align: top; }
+.member-billing-summary p { margin: 0; }
+@media (max-width: 480px) {
+  .member-billing-table th, .member-billing-table td { padding-inline: var(--space-2, 8px); }
+  .member-renewal { white-space: normal; }
+}

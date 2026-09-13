@@ -15,6 +15,7 @@
 import { sweepExpiredHold } from '@bygelo/roundrobin-booking'
 import { listEnabledModuleCode, withOwner, withTenant, type Store, type TenantContext, type Uuid } from '@bygelo/roundrobin-kernel'
 import { materializeAllSchedule } from './module/court/schedule.ts'
+import { runMembershipRenewal } from './module/member/renewal.ts'
 import { processOutbox, runReminder } from './module/message/service.ts'
 import { processWebhookDelivery } from './module/webhook/index.ts'
 
@@ -32,6 +33,8 @@ export const WORKER_JOB: Job[] = [
   { job_code: 'message.outbox', module_code: ['message', 'notification'], interval_ms: MINUTE, run: (tenant) => processOutbox(tenant) },
   { job_code: 'booking.sweep', module_code: ['booking'], interval_ms: 15 * MINUTE, run: (tenant) => sweepExpiredHold(tenant) },
   { job_code: 'message.reminder', module_code: ['message', 'notification'], interval_ms: 15 * MINUTE, run: (tenant) => runReminder(tenant) },
+  // Applies paid invoices, lapses unpaid renewals past grace, invoices the next period.
+  { job_code: 'member.renewal', module_code: ['member', 'membership', 'billing'], interval_ms: 15 * MINUTE, run: (tenant) => runMembershipRenewal(tenant) },
   { job_code: 'court.schedule', module_code: ['court'], interval_ms: 6 * 60 * MINUTE, run: (tenant) => materializeAllSchedule(tenant) },
 ]
 

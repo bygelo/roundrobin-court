@@ -19,11 +19,13 @@ import {
   periodEnd,
   ruleSentence,
   startOfLocalDay,
+  type BillingIntervalCode,
   type BillingPeriodCode,
   type MemberStatusCode,
   type PlanKindCode,
   type PriceRuleCode,
 } from './rule.ts'
+import { readBillingSummary, startBilling, type MemberBillingSummary } from './billing.ts'
 
 export class MemberError extends DomainError {
   constructor(message: string, http_status = 400) {
@@ -39,6 +41,7 @@ export type MemberPlan = {
   plan_kind_code: PlanKindCode
   price_amount: string
   billing_period_code: BillingPeriodCode | null
+  billing_interval_code: BillingIntervalCode
   price_rule_code: PriceRuleCode
   percent_off: string | null
   fixed_price_amount: string | null
@@ -72,6 +75,8 @@ export type Member = {
   status_code: MemberStatusCode
   pass_remaining_count: number
   pass: MemberPass[]
+  /** Renewal state and badge when the membership is on a billed plan; null otherwise. */
+  billing: MemberBillingSummary | null
 }
 
 function requireText(value: unknown, label: string): string {
@@ -113,7 +118,7 @@ type PlanRow = Omit<MemberPlan, 'rule_sentence' | 'holder_count'> & { holder_cou
 async function readPlan(tenant: TenantContext, filter: { member_plan_id?: Uuid } = {}): Promise<MemberPlan[]> {
   const row = await tenant.query<PlanRow[]>`
     SELECT p.member_plan_id, p.membership_plan_id, mp.plan_code, mp.display_name, p.plan_kind_code,
-           p.price_amount::text AS price_amount, p.billing_period_code, p.price_rule_code,
+           p.price_amount::text AS price_amount, p.billing_period_code, p.billing_interval_code, p.price_rule_code,
            p.percent_off::text AS percent_off, p.fixed_price_amount::text AS fixed_price_amount,
            p.is_member_session_access, p.session_count, p.valid_day_count,
            CASE WHEN p.plan_kind_code = 'membership'
@@ -139,6 +144,7 @@ async function readPlan(tenant: TenantContext, filter: { member_plan_id?: Uuid }
       plan_kind_code: one.plan_kind_code,
       price_amount: fromCentavo(toCentavo(one.price_amount)),
       billing_period_code: one.billing_period_code,
+      billing_interval_code: one.billing_interval_code,
       price_rule_code: one.price_rule_code,
       percent_off: one.percent_off === null ? null : String(Number(one.percent_off)),
       fixed_price_amount: one.fixed_price_amount === null ? null : fromCentavo(toCentavo(one.fixed_price_amount)),
@@ -168,6 +174,7 @@ export async function createMemberPlan(tenant: TenantContext, input: Record<stri
   const price_amount = fromCentavo(toCentavo(input['price_amount'], 'price_amount'))
 
   let billing_period_code: BillingPeriodCode | null = null
+  const billing_interval_code = readInterval(input['billing_interval_code'] ?? 'none')
   let price_rule_code: PriceRuleCode = 'none'
   let percent_off: string | null = null
   let fixed_price_amount: string | null = null
@@ -176,8 +183,10 @@ export async function createMemberPlan(tenant: TenantContext, input: Record<stri
   let valid_day_count: number | null = null
 
   if (plan_kind_code === 'membership') {
-    const period = input['billing_period_code']
+    // A billed plan's period is its billing interval; the period may be omitted.
+    const period = input['billing_period_code'] ?? (billing_interval_code === 'none' ? undefined : billing_interval_code)
     if (period !== 'monthly' && period !== 'annual') throw new MemberError('billing_period_code must be monthly or annual')
+    checkInterval(billing_interval_code, period, price_amount)
     billing_period_code = period
     const rule = input['price_rule_code'] ?? 'none'
     if (rule !== 'none' && rule !== 'percent_off' && rule !== 'fixed_price') {
@@ -192,6 +201,7 @@ export async function createMemberPlan(tenant: TenantContext, input: Record<stri
     if (rule === 'fixed_price') fixed_price_amount = fromCentavo(toCentavo(input['fixed_price_amount'], 'fixed_price_amount'))
     is_member_session_access = input['is_member_session_access'] === true
   } else {
+    if (billing_interval_code !== 'none') throw new MemberError('A pass is sold once — billing_interval_code must be none')
     session_count = positiveCount(input['session_count'], 'session_count')
     valid_day_count = positiveCount(input['valid_day_count'], 'valid_day_count')
   }
@@ -200,14 +210,45 @@ export async function createMemberPlan(tenant: TenantContext, input: Record<stri
   const pack_plan = await createPlan(tenant, { plan_code, display_name })
   const [row] = await tenant.query<{ member_plan_id: Uuid }[]>`
     INSERT INTO member_plan (
-      organization_id, membership_plan_id, plan_kind_code, price_amount, billing_period_code,
+      organization_id, membership_plan_id, plan_kind_code, price_amount, billing_period_code, billing_interval_code,
       price_rule_code, percent_off, fixed_price_amount, is_member_session_access, session_count, valid_day_count
     ) VALUES (
       ${tenant.organization_id}::uuid, ${pack_plan.membership_plan_id}::uuid, ${plan_kind_code}, ${price_amount}::numeric,
-      ${billing_period_code}, ${price_rule_code}, ${percent_off}::numeric, ${fixed_price_amount}::numeric,
+      ${billing_period_code}, ${billing_interval_code}, ${price_rule_code}, ${percent_off}::numeric, ${fixed_price_amount}::numeric,
       ${is_member_session_access}, ${session_count}, ${valid_day_count}
     ) RETURNING member_plan_id`
   return findMemberPlan(tenant, String(row!.member_plan_id))
+}
+
+function readInterval(value: unknown): BillingIntervalCode {
+  if (value !== 'none' && value !== 'monthly' && value !== 'annual') throw new MemberError('billing_interval_code must be none, monthly, or annual')
+  return value
+}
+
+function checkInterval(interval: BillingIntervalCode, period: BillingPeriodCode | null, price_amount: string): void {
+  if (interval === 'none') return
+  if (interval !== period) throw new MemberError(`A ${period ?? 'pass'} plan can only be invoiced ${period ?? 'never'} — billing_interval_code must match its period`)
+  if (toCentavo(price_amount) <= 0) throw new MemberError('A billed plan needs a price above zero')
+}
+
+/**
+ * Change what a plan costs and whether it is invoiced. Takes effect from the
+ * next invoice raised; invoices already issued keep their amount. Turning
+ * billing on does not put existing members on it — only new enrolments.
+ */
+export async function updateMemberPlan(tenant: TenantContext, member_plan_id: Uuid, input: Record<string, unknown>): Promise<MemberPlan> {
+  const plan = await findMemberPlan(tenant, member_plan_id)
+  const price_amount = input['price_amount'] === undefined ? plan.price_amount : fromCentavo(toCentavo(input['price_amount'], 'price_amount'))
+  const billing_interval_code =
+    input['billing_interval_code'] === undefined ? plan.billing_interval_code : readInterval(input['billing_interval_code'])
+  if (plan.plan_kind_code === 'pass' && billing_interval_code !== 'none') {
+    throw new MemberError('A pass is sold once — billing_interval_code must be none')
+  }
+  checkInterval(billing_interval_code, plan.billing_period_code, price_amount)
+  await tenant.query`
+    UPDATE member_plan SET price_amount = ${price_amount}::numeric, billing_interval_code = ${billing_interval_code}
+    WHERE organization_id = ${tenant.organization_id}::uuid AND member_plan_id = ${member_plan_id}::uuid`
+  return findMemberPlan(tenant, member_plan_id)
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +304,7 @@ export async function listMember(
       starts_at: Date | null
       ends_at: Date | null
       frozen_until: Date | null
+      renewal_state_code: string | null
     }[]
   >`
     WITH holder AS (
@@ -273,14 +315,15 @@ export async function listMember(
       WHERE x.organization_id = ${tenant.organization_id}::uuid AND ps.party_id IS NOT NULL
     ), latest AS (
       SELECT DISTINCT ON (m.party_id) m.party_id, m.membership_id, m.status::text AS status, m.starts_at, m.ends_at,
-             m.frozen_until, mp.display_name AS plan_name
+             m.frozen_until, mp.display_name AS plan_name, b.renewal_state_code
       FROM membership m
       JOIN membership_plan mp ON mp.membership_plan_id = m.membership_plan_id AND mp.organization_id = m.organization_id
+      LEFT JOIN member_billing b ON b.membership_id = m.membership_id AND b.organization_id = m.organization_id
       WHERE m.organization_id = ${tenant.organization_id}::uuid AND m.deleted_at IS NULL
-      ORDER BY m.party_id, (m.status IN ('active', 'frozen')) DESC, m.starts_at DESC
+      ORDER BY m.party_id, (m.status IN ('active', 'frozen', 'past_due')) DESC, m.starts_at DESC
     )
     SELECT p.party_id, p.display_name, p.email_address, p.phone_number,
-           l.membership_id, l.plan_name, l.status, l.starts_at, l.ends_at, l.frozen_until
+           l.membership_id, l.plan_name, l.status, l.starts_at, l.ends_at, l.frozen_until, l.renewal_state_code
     FROM holder h
     JOIN party p ON p.party_id = h.party_id AND p.organization_id = ${tenant.organization_id}::uuid AND p.deleted_at IS NULL
     LEFT JOIN latest l ON l.party_id = h.party_id
@@ -297,6 +340,11 @@ export async function listMember(
 
   const pass_by_party = await readPass(tenant, row.map((one) => String(one.party_id)))
   const now = new Date()
+  const billing_by_membership = await readBillingSummary(
+    tenant,
+    row.flatMap((one) => (one.membership_id === null ? [] : [String(one.membership_id)])),
+    localDate(now, await venueTimeZone(tenant)),
+  )
   const member = row.map((one): Member => {
     const pass = pass_by_party.get(String(one.party_id)) ?? []
     return {
@@ -309,11 +357,17 @@ export async function listMember(
       starts_at: one.starts_at ? new Date(one.starts_at).toISOString() : null,
       ends_at: one.ends_at ? new Date(one.ends_at).toISOString() : null,
       frozen_until: one.frozen_until ? new Date(one.frozen_until).toISOString() : null,
-      status_code: memberStatus({ status: one.status, ends_at: one.ends_at ? new Date(one.ends_at) : null, now }),
+      status_code: memberStatus({
+        status: one.status,
+        ends_at: one.ends_at ? new Date(one.ends_at) : null,
+        now,
+        renewal_state_code: one.renewal_state_code,
+      }),
       pass_remaining_count: pass
         .filter((each) => each.status === 'active' && new Date(each.valid_until) > now)
         .reduce((sum, each) => sum + (each.remaining_count ?? 0), 0),
       pass,
+      billing: one.membership_id === null ? null : (billing_by_membership.get(String(one.membership_id)) ?? null),
     }
   })
   return filter.status ? member.filter((one) => one.status_code === filter.status) : member
@@ -373,7 +427,7 @@ export async function enrolMember(tenant: TenantContext, input: Record<string, u
     SELECT mp.display_name AS plan_name, m.ends_at
     FROM membership m JOIN membership_plan mp ON mp.membership_plan_id = m.membership_plan_id
     WHERE m.organization_id = ${tenant.organization_id}::uuid AND m.party_id = ${party_id}::uuid
-      AND m.deleted_at IS NULL AND m.status IN ('active', 'frozen')
+      AND m.deleted_at IS NULL AND m.status IN ('active', 'frozen', 'past_due')
       AND (m.ends_at IS NULL OR m.ends_at > ${startOfLocalDay(starts_on, time_zone)})
     LIMIT 1`
   if (current) {
@@ -383,12 +437,26 @@ export async function enrolMember(tenant: TenantContext, input: Record<string, u
     )
   }
 
-  await issueMembership(tenant, {
+  const membership = await issueMembership(tenant, {
     membership_plan_id: plan.membership_plan_id,
     party_id,
     starts_at: startOfLocalDay(starts_on, time_zone),
     ends_at: startOfLocalDay(periodEnd(starts_on, plan.billing_period_code ?? 'monthly'), time_zone),
   })
+  if (plan.billing_interval_code !== 'none' && plan.billing_period_code) {
+    // Billed plan: pending_payment with the first-period invoice, until paid.
+    await startBilling(tenant, {
+      membership_id: String(membership.membership_id),
+      membership_code: membership.membership_code,
+      party_id,
+      member_plan_id: plan.member_plan_id,
+      plan_name: plan.display_name,
+      price_amount: plan.price_amount,
+      billing_period_code: plan.billing_period_code,
+      starts_on,
+      time_zone,
+    })
+  }
   return findMember(tenant, party_id)
 }
 
@@ -483,12 +551,22 @@ export async function readEntitlement(tenant: TenantContext, party_id: Uuid) {
     WHERE organization_id = ${tenant.organization_id}::uuid AND party_id = ${party_id}::uuid AND deleted_at IS NULL`
   if (!party) throw new MemberError('player not found', 404)
   const membership = await tenant.query<
-    { membership_id: Uuid; plan_name: string; status: string; starts_at: Date; ends_at: Date | null; member_plan_id: Uuid | null }[]
+    {
+      membership_id: Uuid
+      plan_name: string
+      status: string
+      starts_at: Date
+      ends_at: Date | null
+      member_plan_id: Uuid | null
+      renewal_state_code: string | null
+    }[]
   >`
-    SELECT m.membership_id, mp.display_name AS plan_name, m.status::text AS status, m.starts_at, m.ends_at, p.member_plan_id
+    SELECT m.membership_id, mp.display_name AS plan_name, m.status::text AS status, m.starts_at, m.ends_at, p.member_plan_id,
+           b.renewal_state_code
     FROM membership m
     JOIN membership_plan mp ON mp.membership_plan_id = m.membership_plan_id
     LEFT JOIN member_plan p ON p.membership_plan_id = m.membership_plan_id AND p.organization_id = m.organization_id
+    LEFT JOIN member_billing b ON b.membership_id = m.membership_id AND b.organization_id = m.organization_id
     WHERE m.organization_id = ${tenant.organization_id}::uuid AND m.party_id = ${party_id}::uuid AND m.deleted_at IS NULL
     ORDER BY m.starts_at DESC`
   const plan = await readPlan(tenant)
@@ -499,7 +577,12 @@ export async function readEntitlement(tenant: TenantContext, party_id: Uuid) {
     return {
       membership_id: String(one.membership_id),
       plan_name: one.plan_name,
-      status_code: memberStatus({ status: one.status, ends_at: one.ends_at ? new Date(one.ends_at) : null, now }),
+      status_code: memberStatus({
+        status: one.status,
+        ends_at: one.ends_at ? new Date(one.ends_at) : null,
+        now,
+        renewal_state_code: one.renewal_state_code,
+      }),
       starts_at: new Date(one.starts_at).toISOString(),
       ends_at: one.ends_at ? new Date(one.ends_at).toISOString() : null,
       rule_sentence: rule?.rule_sentence ?? null,
@@ -589,6 +672,12 @@ export async function quote(
         WHERE m.organization_id = ${tenant.organization_id}::uuid
           AND m.party_id = ${input.party_id}::uuid
           AND m.status = 'active' AND m.deleted_at IS NULL AND p.deleted_at IS NULL
+          -- A billed membership prices as a member only while its renewal state is
+          -- active: never pending_payment, never lapsed (belt and braces over past_due).
+          AND NOT EXISTS (
+            SELECT 1 FROM member_billing b
+            WHERE b.organization_id = m.organization_id AND b.membership_id = m.membership_id
+              AND b.renewal_state_code <> 'active')
           AND (m.starts_at AT TIME ZONE ${session.time_zone})::date <= (${session.starts_at}::timestamptz AT TIME ZONE ${session.time_zone})::date
           AND (m.ends_at IS NULL
                OR (${session.starts_at}::timestamptz AT TIME ZONE ${session.time_zone})::date < (m.ends_at AT TIME ZONE ${session.time_zone})::date)`

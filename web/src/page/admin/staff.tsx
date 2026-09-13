@@ -115,7 +115,7 @@ export default function Page(_prop: PageProp) {
               action={can_manage && <Button onClick={() => setModal({ kind: 'add' })}>Add staff</Button>}
             />
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>

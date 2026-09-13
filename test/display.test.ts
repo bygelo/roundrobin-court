@@ -113,7 +113,7 @@ describe('display screens', { skip: !TEST_DATABASE_URL }, () => {
   const pull = (value: string) => venue.publicRequest('/public/display/state', { method: 'POST', body: JSON.stringify({ credential: value }) })
 
   it('refuses a screen without a kind, a name, or (for a court screen) a court', async () => {
-    assert.equal((await post(venue, '/api/v1/display/screen', { kind: 'kiosk', display_name: 'X' })).status, 400)
+    assert.equal((await post(venue, '/api/v1/display/screen', { kind: 'jukebox', display_name: 'X' })).status, 400)
     assert.equal((await post(venue, '/api/v1/display/screen', { kind: 'lounge', display_name: '  ' })).status, 400)
     assert.equal((await post(venue, '/api/v1/display/screen', { kind: 'court', display_name: 'Court TV' })).status, 400)
   })

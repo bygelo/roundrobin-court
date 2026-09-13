@@ -248,7 +248,7 @@ function MatchBoard() {
               {recent.length === 0 ? (
                 <EmptyState title="No finished matches yet" description="A match appears here when its last game ends. Confirm it to lock the result." />
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap" tabIndex={0}>
                   <table className="table">
                     <thead>
                       <tr>
@@ -898,7 +898,7 @@ function Scorer({ score_match_id }: { score_match_id: string }) {
       )}
       {notice && <Alert severity="caution" title={notice} onDismiss={() => setNotice(undefined)} />}
 
-      <div className="scorer__call" aria-live="polite">
+      <div className="scorer__call" aria-live="polite" aria-atomic="true">
         <span className="scorer__call-label">{view.is_complete ? 'Final' : 'Call'}</span>
         <span className="scorer__call-value">{view.is_complete ? gameSummary(view.game_history) || 'Forfeit' : view.call_out}</span>
         <span className="scorer__call-headline">{withName(match, view.headline)}</span>

@@ -264,7 +264,7 @@ export default function Page(_prop: PageProp) {
               <summary>Which accounts the journal uses</summary>
               <ResourceView resource={account}>
                 {(map) => (
-                  <div className="table-wrap">
+                  <div className="table-wrap" tabIndex={0}>
                     <table className="table">
                       <thead>
                         <tr>
@@ -319,7 +319,7 @@ function KpiRow({ data }: { data: Summary }) {
 function RevenueCard({ data }: { data: Summary }) {
   return (
     <Card title="Revenue by source" description="Payments received, less refunds, in this range.">
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0}>
         <table className="table">
           <thead>
             <tr>

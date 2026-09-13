@@ -563,7 +563,7 @@ function ConsoleBody({
         {roster.length === 0 ? (
           <EmptyState title="No players yet" description="Add players as they arrive, or share the link so they can check themselves in." />
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
             <table className="table">
               <thead>
                 <tr>
@@ -621,7 +621,7 @@ function ConsoleBody({
         {data.waitlist.length === 0 ? (
           <p className="muted">Nobody on the waitlist.</p>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
             <table className="table">
               <thead>
                 <tr>

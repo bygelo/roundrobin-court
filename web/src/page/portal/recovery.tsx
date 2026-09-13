@@ -26,6 +26,15 @@ function remainingText(until: string, now: number): string {
   return `${Math.floor(second / 60)}:${String(second % 60).padStart(2, '0')}`
 }
 
+/** A stable sentence that changes only at a milestone, so the live region is not chatty. */
+function holdMilestone(until: string, now: number): string {
+  const second = Math.max(0, Math.floor((Date.parse(until) - now) / 1000))
+  if (second === 0) return 'The hold has ended.'
+  if (second <= 60) return 'Less than 1 minute left to pay before the hold ends.'
+  if (second <= 300) return 'Less than 5 minutes left to pay before the hold ends.'
+  return ''
+}
+
 export default function Page({ param }: PageProp) {
   const organization_code = param['organization_code'] ?? ''
   const booking_code = param['booking_code'] ?? ''
@@ -134,6 +143,10 @@ export default function Page({ param }: PageProp) {
         <Card title="Your court is held" description="Finish payment before the hold ends, or the court opens for others.">
           <p className="countdown" aria-live="off">
             {remainingText(booking.hold_expires_at, now)}
+          </p>
+          {/* The clock ticks silently; this announces only at 5 minutes, 1 minute, and the end. */}
+          <p className="visually-hidden" role="status">
+            {holdMilestone(booking.hold_expires_at, now)}
           </p>
           <p className="muted">Hold ends at {formatDateTime(booking.hold_expires_at)}.</p>
         </Card>

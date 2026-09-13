@@ -4,12 +4,33 @@ export type MessageChannel = 'email' | 'sms'
 
 export type OutboxStatus = 'queued' | 'held' | 'sending' | 'sent' | 'failed' | 'suppressed'
 
+export type EnvLine = { env_name: string; is_required: boolean; is_set: boolean; description: string }
+
+export type ChannelStatus = {
+  delivery_channel: MessageChannel
+  is_configured: boolean
+  provider_code: string | null
+  status_label: string
+  explanation: string
+  held_count: number
+  env: EnvLine[]
+}
+
 export type ProviderStatus = {
   is_configured: boolean
   provider_code: string | null
   held_count: number
-  channel: { delivery_channel: MessageChannel; is_configured: boolean; status_label: string; explanation: string }[]
-  env: { env_name: string; is_required: boolean; is_set: boolean; description: string }[]
+  channel: ChannelStatus[]
+  env: EnvLine[]
+}
+
+export type TestEmailResult = {
+  status: 'sent' | 'held' | 'failed'
+  provider_code: string | null
+  provider_message_id: string | null
+  recipient_mask: string
+  is_retryable: boolean
+  reason: string | null
 }
 
 export type OutboxLine = {
@@ -30,7 +51,8 @@ export type OutboxLine = {
 
 export type OutboxView = {
   is_provider_configured: boolean
-  summary: { queued_count: number; sent_count: number; failed_count: number; suppressed_count: number }
+  configured_channel: MessageChannel[]
+  summary: { queued_count: number; held_count: number; sent_count: number; failed_count: number; suppressed_count: number }
   outbox: OutboxLine[]
 }
 
@@ -38,6 +60,7 @@ export type ProcessResult = {
   is_provider_configured: boolean
   sent_count: number
   failed_count: number
+  retry_count: number
   held_count: number
   remaining_count?: number
 }

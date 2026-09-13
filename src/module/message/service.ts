@@ -1,18 +1,17 @@
 // message — the service behind notifyPlayer and the operator surface.
 //
 // Writes to the outbox go through the notification pack (enqueueNotification,
-// setPreference, processNextDelivery, processEnqueuedDelivery). The raw
-// recipient never leaves this file: every value returned is a mask.
+// setPreference). Sending is routed here, per channel, through transport.ts:
+// email through EMAIL_PROVIDER, SMS through NOTIFICATION_SMS_*. A channel with
+// no provider stays held. The raw recipient never leaves this file: every
+// value returned or logged is a mask.
 
+import { randomUUID } from 'node:crypto'
 import { listEnabledModuleCode, type TenantContext, type Uuid } from '@bygelo/roundrobin-kernel'
 import {
-  createHttpSmsProvider,
   enqueueNotification,
   maskRecipient,
-  processEnqueuedDelivery,
-  processNextDelivery,
   setPreference,
-  type HttpSmsProviderOption,
   type NotificationProvider,
 } from '@bygelo/roundrobin-notification'
 import type { MessageKind, NotifyPlayerInput } from './contract.ts'
@@ -38,27 +37,38 @@ import {
   type MessageChannel,
   type OutboxStatus,
 } from './kind.ts'
+import {
+  EMAIL_ENV,
+  SMS_ENV,
+  readEmailConfig,
+  readSmsProvider,
+  wrapProvider,
+  type Transport,
+  type TransportResult,
+} from './transport.ts'
 
 // ---------------------------------------------------------------------------
-// provider — honest: no endpoint configured means nothing is sent
+// provider — honest, per channel: no provider configured means nothing is sent
 // ---------------------------------------------------------------------------
 
-export const PROVIDER_ENV = [
-  { env_name: 'NOTIFICATION_SMS_URL', is_required: true, description: 'The HTTPS endpoint the provider adapter posts each message to.' },
-  { env_name: 'NOTIFICATION_SMS_API_KEY', is_required: false, description: 'The provider API key, sent as a bearer token.' },
-  { env_name: 'NOTIFICATION_SMS_SENDER', is_required: false, description: 'The sender name players see.' },
-  { env_name: 'NOTIFICATION_SMS_PROVIDER', is_required: false, description: 'A short provider label for the attempt log, e.g. semaphore.' },
-] as const
+export const PROVIDER_ENV = [...SMS_ENV, ...EMAIL_ENV]
+
+const CHANNEL_ENV: Record<MessageChannel, readonly { env_name: string; is_required: boolean; description: string }[]> = {
+  email: EMAIL_ENV,
+  sms: SMS_ENV,
+}
+
+const EMAIL_PROVIDER_LABEL: Record<string, string> = { resend: 'Resend', postmark: 'Postmark', http: 'HTTP relay' }
 
 let provider_override: NotificationProvider | undefined
 
-/** Install a provider for this process (tests, or a worker composing its own). Pass nothing to clear. */
+/** Install a provider for BOTH channels in this process (tests). Pass nothing to clear. */
 export function setMessageProvider(provider?: NotificationProvider): void {
   provider_override = provider
 }
 
 /**
- * The provider messages go out through, or undefined when none is configured.
+ * The SMS provider, or undefined when none is configured.
  *
  * Deliberately NOT the pack's getNotificationProvider(): with no endpoint set,
  * the pack falls back to an in-process recording double that marks rows
@@ -66,55 +76,103 @@ export function setMessageProvider(provider?: NotificationProvider): void {
  * message no player received.
  */
 export function resolveProvider(): NotificationProvider | undefined {
-  if (provider_override) return provider_override
-  const endpoint_url = process.env['NOTIFICATION_SMS_URL']?.trim()
-  if (!endpoint_url) return undefined
-  const option: HttpSmsProviderOption = {
-    endpoint_url,
-    provider_code: process.env['NOTIFICATION_SMS_PROVIDER']?.trim() || 'http-sms',
+  return provider_override ?? readSmsProvider()
+}
+
+/** The transport a channel sends through, or undefined when that channel is held. */
+export function resolveTransport(channel: MessageChannel): Transport | undefined {
+  if (provider_override) return wrapProvider(provider_override, channel)
+  if (channel === 'sms') {
+    const provider = readSmsProvider()
+    return provider ? wrapProvider(provider, 'sms') : undefined
   }
-  const api_key = process.env['NOTIFICATION_SMS_API_KEY']?.trim()
-  if (api_key) option.api_key = api_key
-  const sender = process.env['NOTIFICATION_SMS_SENDER']?.trim()
-  if (sender) option.sender = sender
-  return createHttpSmsProvider(option)
+  const config = readEmailConfig()
+  return config.is_configured ? config.transport : undefined
+}
+
+function configuredChannel(): MessageChannel[] {
+  return MESSAGE_CHANNEL.filter((channel) => resolveTransport(channel) !== undefined)
+}
+
+type EnvLine = { env_name: string; is_required: boolean; is_set: boolean; description: string }
+
+function envLine(list: readonly { env_name: string; is_required: boolean; description: string }[]): EnvLine[] {
+  return list.map((one) => ({
+    env_name: one.env_name,
+    is_required: one.is_required,
+    is_set: Boolean(process.env[one.env_name]?.trim()),
+    description: one.description,
+  }))
+}
+
+export type ChannelStatus = {
+  delivery_channel: MessageChannel
+  is_configured: boolean
+  provider_code: string | null
+  status_label: string
+  explanation: string
+  held_count: number
+  env: EnvLine[]
 }
 
 export type ProviderStatus = {
   is_configured: boolean
   provider_code: string | null
   held_count: number
-  channel: { delivery_channel: MessageChannel; is_configured: boolean; status_label: string; explanation: string }[]
-  env: { env_name: string; is_required: boolean; is_set: boolean; description: string }[]
+  channel: ChannelStatus[]
+  env: EnvLine[]
+}
+
+function describeChannel(channel: MessageChannel): Omit<ChannelStatus, 'held_count'> {
+  const env = envLine(CHANNEL_ENV[channel])
+  if (provider_override) {
+    return { delivery_channel: channel, is_configured: true, provider_code: provider_override.provider_code, status_label: `Configured — ${provider_override.provider_code}`, explanation: 'A provider installed by this process sends every channel.', env }
+  }
+  if (channel === 'sms') {
+    const provider = readSmsProvider()
+    return provider
+      ? { delivery_channel: channel, is_configured: true, provider_code: provider.provider_code, status_label: `Configured — ${provider.provider_code}`, explanation: 'Text messages are posted to the configured SMS endpoint.', env }
+      : { delivery_channel: channel, is_configured: false, provider_code: null, status_label: 'Held — no SMS provider configured', explanation: 'Text messages wait in the outbox until NOTIFICATION_SMS_URL is set.', env }
+  }
+  const config = readEmailConfig()
+  if (config.is_configured) {
+    const label = EMAIL_PROVIDER_LABEL[config.provider_code] ?? config.provider_code
+    return { delivery_channel: channel, is_configured: true, provider_code: config.provider_code, status_label: `Configured — ${label}`, explanation: `Email is sent through ${label}.`, env }
+  }
+  return {
+    delivery_channel: channel,
+    is_configured: false,
+    provider_code: config.provider_code,
+    status_label: config.provider_code ? 'Held — email provider is not fully configured' : 'Held — no email provider configured',
+    explanation: `${config.reason} Email waits in the outbox until then.`,
+    env,
+  }
+}
+
+async function countHeld(tenant: TenantContext, configured: MessageChannel[]): Promise<Record<MessageChannel, number>> {
+  const row = await tenant.query<{ delivery_channel: string; queued_count: number }[]>`
+    SELECT delivery_channel::text AS delivery_channel, count(*)::int AS queued_count FROM notification_delivery
+    WHERE organization_id = ${tenant.organization_id} AND status = 'queued'
+      AND delivery_kind = ANY(${ALL_KIND}::text[])
+    GROUP BY delivery_channel`
+  const held: Record<MessageChannel, number> = { email: 0, sms: 0 }
+  for (const one of row) {
+    const channel = one.delivery_channel as MessageChannel
+    if (channel in held && !configured.includes(channel)) held[channel] = one.queued_count
+  }
+  return held
 }
 
 export async function readProviderStatus(tenant: TenantContext): Promise<ProviderStatus> {
-  const provider = resolveProvider()
-  const is_configured = provider !== undefined
-  const [count] = await tenant.query<{ queued_count: number }[]>`
-    SELECT count(*)::int AS queued_count FROM notification_delivery
-    WHERE organization_id = ${tenant.organization_id} AND status = 'queued'
-      AND delivery_kind = ANY(${ALL_KIND}::text[])`
+  const channel = MESSAGE_CHANNEL.map(describeChannel)
+  const configured = channel.filter((one) => one.is_configured).map((one) => one.delivery_channel)
+  const held = await countHeld(tenant, configured)
   return {
-    is_configured,
-    provider_code: provider?.provider_code ?? null,
-    held_count: is_configured ? 0 : (count?.queued_count ?? 0),
-    channel: MESSAGE_CHANNEL.map((delivery_channel) => ({
-      delivery_channel,
-      is_configured,
-      status_label: is_configured ? 'Configured' : 'Held — no provider configured',
-      explanation: is_configured
-        ? delivery_channel === 'sms'
-          ? 'Text messages are posted to the configured provider endpoint.'
-          : 'Email is posted to the same provider endpoint; the notification pack has no separate email adapter.'
-        : 'Messages are written to the outbox and wait there until a provider is configured.',
-    })),
-    env: PROVIDER_ENV.map((one) => ({
-      env_name: one.env_name,
-      is_required: one.is_required,
-      is_set: Boolean(process.env[one.env_name]?.trim()),
-      description: one.description,
-    })),
+    is_configured: configured.length > 0,
+    provider_code: channel.find((one) => one.is_configured)?.provider_code ?? null,
+    held_count: held.email + held.sms,
+    channel: channel.map((one) => ({ ...one, held_count: held[one.delivery_channel] })),
+    env: envLine(PROVIDER_ENV),
   }
 }
 
@@ -428,7 +486,7 @@ const STATUS_FILTER: Record<OutboxStatus, string> = {
   suppressed: 'suppressed',
 }
 
-function toLine(row: RawLine, is_provider_configured: boolean): OutboxLine {
+function toLine(row: RawLine, configured: MessageChannel[]): OutboxLine {
   const meta = findKind(row.delivery_kind)
   return {
     notification_delivery_id: String(row.notification_delivery_id),
@@ -439,7 +497,7 @@ function toLine(row: RawLine, is_provider_configured: boolean): OutboxLine {
     recipient_mask: row.recipient_mask,
     player_name: row.player_name,
     subject_code: row.subject_code,
-    status: outboxStatus(row.status, is_provider_configured),
+    status: outboxStatus(row.status, configured.includes(row.delivery_channel as MessageChannel)),
     attempt_count: Number(row.attempt_count),
     last_error: errorSentence(row.last_error),
     created_at: row.created_at,
@@ -448,14 +506,14 @@ function toLine(row: RawLine, is_provider_configured: boolean): OutboxLine {
 }
 
 export async function listOutbox(tenant: TenantContext, filter: { status?: string; notification_delivery_id?: string } = {}) {
-  let status: string | undefined
+  let status: OutboxStatus | undefined
   if (filter.status) {
     if (!(filter.status in STATUS_FILTER)) {
       throw new MessageInputError('Filter by queued, held, sending, sent, failed, or suppressed.')
     }
-    status = STATUS_FILTER[filter.status as OutboxStatus]
+    status = filter.status as OutboxStatus
   }
-  const is_provider_configured = resolveProvider() !== undefined
+  const configured = configuredChannel()
   const row = await tenant.query<RawLine[]>`
     SELECT d.notification_delivery_id, d.delivery_kind, d.delivery_channel::text AS delivery_channel,
            d.recipient_mask, p.display_name AS player_name, md.subject_code,
@@ -466,7 +524,9 @@ export async function listOutbox(tenant: TenantContext, filter: { status?: strin
     LEFT JOIN party p ON p.party_id = d.party_id
     WHERE d.organization_id = ${tenant.organization_id}
       AND d.delivery_kind = ANY(${ALL_KIND}::text[])
-      ${status ? tenant.query`AND d.status = ${status}::notification_delivery_status` : tenant.query``}
+      ${status ? tenant.query`AND d.status = ${STATUS_FILTER[status]}::notification_delivery_status` : tenant.query``}
+      ${status === 'held' ? tenant.query`AND NOT (d.delivery_channel::text = ANY(${configured}::text[]))` : tenant.query``}
+      ${status === 'queued' ? tenant.query`AND d.delivery_channel::text = ANY(${configured}::text[])` : tenant.query``}
       ${filter.notification_delivery_id ? tenant.query`AND d.notification_delivery_id = ${filter.notification_delivery_id}` : tenant.query``}
     ORDER BY d.created_at DESC
     LIMIT 200`
@@ -475,60 +535,234 @@ export async function listOutbox(tenant: TenantContext, filter: { status?: strin
     WHERE organization_id = ${tenant.organization_id} AND delivery_kind = ANY(${ALL_KIND}::text[])
     GROUP BY status`
   const countOf = (one: string) => count.find((each) => each.status === one)?.line_count ?? 0
+  const held = await countHeld(tenant, configured)
   return {
-    is_provider_configured,
+    is_provider_configured: configured.length > 0,
+    configured_channel: configured,
     summary: {
       queued_count: countOf('queued') + countOf('claimed'),
+      held_count: held.email + held.sms,
       sent_count: countOf('delivered'),
       failed_count: countOf('failed'),
       suppressed_count: countOf('suppressed'),
     },
-    outbox: row.map((one) => toLine(one, is_provider_configured)),
+    outbox: row.map((one) => toLine(one, configured)),
   }
 }
 
+// ---------------------------------------------------------------------------
+// send — claim per configured channel, send through its transport, record
+// ---------------------------------------------------------------------------
+
+/** Attempts before a retryable refusal becomes a failure the operator retries. */
+export const MAX_ATTEMPT = 5
+
+/** Wait before the next automatic try: 1, 2, 4, 8 minutes, capped at an hour. */
+function backoffSecond(attempt_count: number): number {
+  return Math.min(60 * 2 ** Math.max(attempt_count - 1, 0), 3600)
+}
+
+type ClaimedRow = {
+  notification_delivery_id: Uuid
+  delivery_kind: string
+  delivery_channel: string
+  recipient: string
+  recipient_mask: string
+  subject: string | null
+  body: string
+  attempt_count: number
+  claim_token: string
+}
+
+async function claimNext(tenant: TenantContext, configured: MessageChannel[]): Promise<ClaimedRow | undefined> {
+  const token = `claim_${randomUUID()}`
+  const [row] = await tenant.query<ClaimedRow[]>`
+    UPDATE notification_delivery
+    SET status = 'claimed', claim_token = ${token}, claimed_at = now()
+    WHERE organization_id = ${tenant.organization_id}
+      AND notification_delivery_id = (
+        SELECT notification_delivery_id FROM notification_delivery
+        WHERE organization_id = ${tenant.organization_id}
+          AND status = 'queued' AND available_at <= now()
+          AND delivery_channel::text = ANY(${configured}::text[])
+        ORDER BY created_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+    RETURNING notification_delivery_id, delivery_kind, delivery_channel::text AS delivery_channel, recipient,
+              recipient_mask, subject, body, attempt_count, claim_token`
+  return row
+}
+
+async function claimById(tenant: TenantContext, notification_delivery_id: string): Promise<ClaimedRow | undefined> {
+  const token = `claim_${randomUUID()}`
+  const [row] = await tenant.query<ClaimedRow[]>`
+    UPDATE notification_delivery
+    SET status = 'claimed', claim_token = ${token}, claimed_at = now()
+    WHERE organization_id = ${tenant.organization_id}
+      AND notification_delivery_id = ${notification_delivery_id} AND status = 'queued'
+    RETURNING notification_delivery_id, delivery_kind, delivery_channel::text AS delivery_channel, recipient,
+              recipient_mask, subject, body, attempt_count, claim_token`
+  return row
+}
+
+type SendOutcome = 'sent' | 'retry' | 'failed'
+
+async function sendClaimed(tenant: TenantContext, row: ClaimedRow, transport: Transport): Promise<SendOutcome> {
+  let result: TransportResult
+  try {
+    result = await transport.send({
+      channel: row.delivery_channel as MessageChannel,
+      recipient: row.recipient,
+      subject: row.subject,
+      body: row.body,
+      idempotency_key: String(row.notification_delivery_id),
+    })
+  } catch (error) {
+    // A transport never throws by contract; if one does, nothing was confirmed sent.
+    result = { is_sent: false, is_retryable: true, reason: `${transport.provider_code} failed: ${error instanceof Error ? error.message : 'unknown error'}`, response_code: 'error' }
+  }
+  const attempt_count = Number(row.attempt_count) + 1
+
+  await tenant.query`
+    INSERT INTO notification_delivery_attempt (
+      organization_id, notification_delivery_id, response_code, provider_message_id, is_success, error_message, provider_code
+    ) VALUES (
+      ${tenant.organization_id}, ${row.notification_delivery_id}, ${result.response_code},
+      ${result.is_sent ? result.provider_message_id : null}, ${result.is_sent},
+      ${result.is_sent ? null : errorSentence(result.reason)}, ${transport.provider_code}
+    )`
+
+  if (result.is_sent) {
+    await tenant.query`
+      UPDATE notification_delivery
+      SET status = 'delivered', provider_message_id = ${result.provider_message_id}, attempt_count = ${attempt_count},
+          last_error = NULL, claim_token = NULL
+      WHERE organization_id = ${tenant.organization_id} AND notification_delivery_id = ${row.notification_delivery_id}
+        AND claim_token = ${row.claim_token}`
+    return 'sent'
+  }
+
+  const reason = errorSentence(result.reason) ?? 'The provider refused.'
+  if (result.is_retryable && attempt_count < MAX_ATTEMPT) {
+    const wait_second = backoffSecond(attempt_count)
+    await tenant.query`
+      UPDATE notification_delivery
+      SET status = 'queued', available_at = now() + ${wait_second} * interval '1 second', attempt_count = ${attempt_count},
+          last_error = ${reason}, claim_token = NULL, claimed_at = NULL
+      WHERE organization_id = ${tenant.organization_id} AND notification_delivery_id = ${row.notification_delivery_id}
+        AND claim_token = ${row.claim_token}`
+    console.warn(`message: ${row.delivery_kind} by ${row.delivery_channel} to ${row.recipient_mask} will retry in ${wait_second}s: ${reason}`)
+    return 'retry'
+  }
+
+  const final_reason = result.is_retryable ? `Gave up after ${attempt_count} attempts. ${reason}` : reason
+  await tenant.query`
+    UPDATE notification_delivery
+    SET status = 'failed', attempt_count = ${attempt_count}, last_error = ${final_reason}, claim_token = NULL
+    WHERE organization_id = ${tenant.organization_id} AND notification_delivery_id = ${row.notification_delivery_id}
+      AND claim_token = ${row.claim_token}`
+  console.warn(`message: ${row.delivery_kind} by ${row.delivery_channel} to ${row.recipient_mask} failed: ${final_reason}`)
+  return 'failed'
+}
+
 export async function processOutbox(tenant: TenantContext) {
-  const provider = resolveProvider()
-  if (!provider) {
-    const [count] = await tenant.query<{ queued_count: number }[]>`
-      SELECT count(*)::int AS queued_count FROM notification_delivery
-      WHERE organization_id = ${tenant.organization_id} AND status = 'queued'`
-    return { is_provider_configured: false, sent_count: 0, failed_count: 0, held_count: count?.queued_count ?? 0 }
+  const route: Record<MessageChannel, Transport | undefined> = { email: resolveTransport('email'), sms: resolveTransport('sms') }
+  const configured = MESSAGE_CHANNEL.filter((channel) => route[channel] !== undefined)
+  const held = await countHeld(tenant, configured)
+  const held_count = held.email + held.sms
+  if (configured.length === 0) {
+    return { is_provider_configured: false, sent_count: 0, failed_count: 0, retry_count: 0, held_count }
   }
   let sent_count = 0
   let failed_count = 0
+  let retry_count = 0
   for (let index = 0; index < 50; index += 1) {
-    const delivery = await processNextDelivery(tenant, provider)
-    if (!delivery) break
-    if (delivery.status === 'delivered') sent_count += 1
-    else if (delivery.status === 'failed') failed_count += 1
+    const row = await claimNext(tenant, configured)
+    if (!row) break
+    const outcome = await sendClaimed(tenant, row, route[row.delivery_channel as MessageChannel]!)
+    if (outcome === 'sent') sent_count += 1
+    else if (outcome === 'failed') failed_count += 1
+    else retry_count += 1
   }
   const [count] = await tenant.query<{ queued_count: number }[]>`
     SELECT count(*)::int AS queued_count FROM notification_delivery
-    WHERE organization_id = ${tenant.organization_id} AND status = 'queued' AND available_at <= now()`
-  return { is_provider_configured: true, sent_count, failed_count, held_count: 0, remaining_count: count?.queued_count ?? 0 }
+    WHERE organization_id = ${tenant.organization_id} AND status = 'queued' AND available_at <= now()
+      AND delivery_channel::text = ANY(${configured}::text[])`
+  return { is_provider_configured: true, sent_count, failed_count, retry_count, held_count, remaining_count: count?.queued_count ?? 0 }
 }
 
 export async function retryDelivery(tenant: TenantContext, notification_delivery_id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(notification_delivery_id)) throw new MessageNotFoundError('That message is not in the outbox.')
-  const [row] = await tenant.query<{ status: string; delivery_kind: string }[]>`
-    SELECT status::text AS status, delivery_kind FROM notification_delivery
+  const [row] = await tenant.query<{ status: string; delivery_kind: string; delivery_channel: string }[]>`
+    SELECT status::text AS status, delivery_kind, delivery_channel::text AS delivery_channel FROM notification_delivery
     WHERE organization_id = ${tenant.organization_id} AND notification_delivery_id = ${notification_delivery_id}`
   if (!row || !findKind(row.delivery_kind)) throw new MessageNotFoundError('That message is not in the outbox.')
+  const channel = row.delivery_channel as MessageChannel
+  const transport = MESSAGE_CHANNEL.includes(channel) ? resolveTransport(channel) : undefined
   if (row.status !== 'failed') {
-    const is_configured = resolveProvider() !== undefined
-    throw new MessageConflictError(`Only a failed message can be retried; this one is ${outboxStatus(row.status, is_configured)}.`)
+    throw new MessageConflictError(`Only a failed message can be retried; this one is ${outboxStatus(row.status, transport !== undefined)}.`)
   }
-  // The pack exports no requeue, so the one transition it lacks is written here:
   // failed → queued, available now, lease cleared. Attempts and the attempt log stay.
   await tenant.query`
     UPDATE notification_delivery
     SET status = 'queued', available_at = now(), claim_token = NULL, claimed_at = NULL
     WHERE organization_id = ${tenant.organization_id} AND notification_delivery_id = ${notification_delivery_id} AND status = 'failed'`
-  const provider = resolveProvider()
-  if (provider) await processEnqueuedDelivery(tenant, notification_delivery_id, provider)
+  if (transport) {
+    const claimed = await claimById(tenant, notification_delivery_id)
+    if (claimed) await sendClaimed(tenant, claimed, transport)
+  }
   const view = await listOutbox(tenant, { notification_delivery_id })
   return { line: view.outbox[0]!, is_provider_configured: view.is_provider_configured }
+}
+
+// ---------------------------------------------------------------------------
+// test email — one message straight to an address the owner types
+// ---------------------------------------------------------------------------
+
+export type TestEmailResult = {
+  status: 'sent' | 'held' | 'failed'
+  provider_code: string | null
+  provider_message_id: string | null
+  recipient_mask: string
+  is_retryable: boolean
+  reason: string | null
+}
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+export async function sendTestEmail(tenant: TenantContext, input: { recipient_email?: unknown }): Promise<TestEmailResult> {
+  const recipient = typeof input.recipient_email === 'string' ? input.recipient_email.trim() : ''
+  if (recipient.length > 254 || !EMAIL_SHAPE.test(recipient)) {
+    throw new MessageInputError('Enter the email address to send the test to, like you@example.com.')
+  }
+  const recipient_mask = maskRecipient(recipient, 'email')
+  const transport = resolveTransport('email')
+  if (!transport) {
+    const config = readEmailConfig()
+    return {
+      status: 'held',
+      provider_code: config.provider_code,
+      provider_message_id: null,
+      recipient_mask,
+      is_retryable: false,
+      reason: config.is_configured ? null : config.reason,
+    }
+  }
+  const venue = await readVenue(tenant)
+  const result = await transport.send({
+    channel: 'email',
+    recipient,
+    subject: `Test email from ${venue.display_name}`,
+    body: `This is a test email from ${venue.display_name}. If you are reading it, player messages by email are working.`,
+    idempotency_key: `test-email-${randomUUID()}`,
+  })
+  if (result.is_sent) {
+    return { status: 'sent', provider_code: transport.provider_code, provider_message_id: result.provider_message_id, recipient_mask, is_retryable: false, reason: null }
+  }
+  const reason = errorSentence(result.reason) ?? 'The provider refused.'
+  console.warn(`message: test email to ${recipient_mask} through ${transport.provider_code} failed: ${reason}`)
+  return { status: 'failed', provider_code: transport.provider_code, provider_message_id: null, recipient_mask, is_retryable: result.is_retryable, reason }
 }
 
 // ---------------------------------------------------------------------------

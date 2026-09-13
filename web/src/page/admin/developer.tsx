@@ -137,7 +137,7 @@ export default function Page(_prop: PageProp) {
                 action={<Button onClick={() => setCreateOpen(true)}>Create key</Button>}
               />
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0}>
                 <table className="table">
                   <thead>
                     <tr>

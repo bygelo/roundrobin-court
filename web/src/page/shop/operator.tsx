@@ -501,7 +501,7 @@ function ProductTab({ product, can_manage }: { product: ReturnType<typeof useRes
               action={can_manage ? <Button onClick={() => setCreating(true)}>New product</Button> : undefined}
             />
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>
@@ -807,7 +807,7 @@ function OrderTab({ can_manage, onSaleChange }: { can_manage: boolean; onSaleCha
               description={filter ? 'Pick another filter to see more.' : 'Sales rung up on the Counter tab appear here with their payment and pickup state.'}
             />
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>

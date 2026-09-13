@@ -35,6 +35,7 @@ type Subscription = {
   pending_count: number
   dead_count: number
   last_delivered_at: string | null
+  paused_reason: 'address_not_allowed' | null
 }
 
 type Delivery = {
@@ -233,7 +234,7 @@ export default function WebhookTab() {
                 }
               />
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0}>
                 <table className="table">
                   <thead>
                     <tr>
@@ -264,7 +265,13 @@ export default function WebhookTab() {
                         </td>
                         <td>
                           <div className="connect-badge-list">
-                            {one.is_active ? <Badge tone="success">Active</Badge> : <Badge>Paused</Badge>}
+                            {one.is_active ? (
+                              <Badge tone="success">Active</Badge>
+                            ) : one.paused_reason === 'address_not_allowed' ? (
+                              <Badge tone="danger">Paused — address not allowed</Badge>
+                            ) : (
+                              <Badge>Paused</Badge>
+                            )}
                             {one.pending_count > 0 && <Badge tone="info">{one.pending_count} queued</Badge>}
                             {one.dead_count > 0 && <Badge tone="danger">{one.dead_count} dead</Badge>}
                           </div>
@@ -342,7 +349,7 @@ export default function WebhookTab() {
                 description="Deliveries appear when a subscribed event happens, or when you send a test event."
               />
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0}>
                 <table className="table">
                   <thead>
                     <tr>
@@ -506,7 +513,7 @@ function CreateDialog({
       <form className="form" onSubmit={submit}>
         <TextInput
           label="Destination URL"
-          hint="Must start with https://"
+          hint="Must start with https:// and be reachable on the public internet (no private or internal addresses)."
           type="url"
           inputMode="url"
           placeholder="https://"

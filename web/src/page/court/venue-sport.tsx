@@ -29,7 +29,7 @@ export function SportTab({ is_manager, onChange }: TabProp) {
               {catalog.sport.length === 0 ? (
                 <EmptyState title="No sports yet" description="Add the sports your courts are for — pickleball is a good place to start." />
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap" tabIndex={0}>
                   <table className="table">
                     <thead>
                       <tr>

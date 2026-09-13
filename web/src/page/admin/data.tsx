@@ -303,7 +303,7 @@ function PrivacyCard({ can_manage, onNotice }: { can_manage: boolean; onNotice: 
           data.privacy_request.length === 0 ? (
             <EmptyState title="No privacy requests" description="When a player asks for a copy of their data or to delete it, it appears here." />
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>

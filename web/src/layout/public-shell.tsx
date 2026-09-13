@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Loading } from '../component/ui.tsx'
 import { useResource } from '../hook.ts'
 import { loadSite, type PublicSite } from '../public-site.ts'
@@ -28,6 +28,22 @@ export function PublicShell({ organization_code, children }: { organization_code
   const [is_menu_open, setMenuOpen] = useState(false)
   useEffect(() => setMenuOpen(false), [path])
 
+  // Small screens: opening the menu moves focus to its first link; Escape closes
+  // it and returns focus to the toggle.
+  const menu_ref = useRef<HTMLButtonElement>(null)
+  const nav_ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!is_menu_open) return
+    nav_ref.current?.querySelector<HTMLElement>('a')?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setMenuOpen(false)
+      menu_ref.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [is_menu_open])
+
   useEffect(() => {
     if (site.data) document.title = site.data.display_name
   }, [site.data])
@@ -52,14 +68,16 @@ export function PublicShell({ organization_code, children }: { organization_code
             {data.display_name}
           </Link>
           <button
+            ref={menu_ref}
             type="button"
             className="public__menu"
             aria-expanded={is_menu_open}
+            aria-controls="public-nav"
             onClick={() => setMenuOpen((value) => !value)}
           >
             Menu
           </button>
-          <nav className={`public__nav ${is_menu_open ? 'is-open' : ''}`} aria-label="Venue">
+          <nav className={`public__nav ${is_menu_open ? 'is-open' : ''}`} aria-label="Venue" id="public-nav" ref={nav_ref}>
             {data.nav.map((one) => {
               const to = NAV_PATH[one.nav_code](organization_code)
               return (
@@ -70,7 +88,7 @@ export function PublicShell({ organization_code, children }: { organization_code
             })}
           </nav>
         </header>
-        <main className="public__main" id="main">
+        <main className="public__main" id="main" tabIndex={-1}>
           {children}
         </main>
         <footer className="public__footer">

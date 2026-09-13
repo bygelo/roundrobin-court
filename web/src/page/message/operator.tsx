@@ -1,53 +1,21 @@
-// Operator → Player messages (R22). Provider status, the outbox, templates,
-// and player preferences for transactional messages.
+// Operator → Player messages (R22). Provider status per channel, a test
+// email, the outbox, templates, and player preferences for transactional
+// messages.
 
 import { useState } from 'react'
 import { operatorFetch } from '../../api.ts'
-import { Alert, Badge, PageHeader, Tabs } from '../../component/ui.tsx'
-import { useResource, type Resource } from '../../hook.ts'
+import { PageHeader, Tabs } from '../../component/ui.tsx'
+import { useResource } from '../../hook.ts'
 import type { PageProp } from '../../registry.ts'
 import { useOperator } from '../../session.tsx'
 import './message.css'
 import { OutboxTab } from './outbox.tsx'
 import { PreferenceTab } from './preference.tsx'
+import { ProviderAlert, TestEmailForm } from './provider.tsx'
 import { TemplateTab } from './template.tsx'
-import { CHANNEL_LABEL, countLabel, type ProviderStatus } from './type.ts'
+import type { ProviderStatus } from './type.ts'
 
 type TabCode = 'outbox' | 'template' | 'preference'
-
-function ProviderAlert({ resource }: { resource: Resource<{ provider: ProviderStatus }> }) {
-  const provider = resource.data?.provider
-  if (!provider) return null
-  if (provider.is_configured) {
-    return (
-      <Alert severity="success" title={`Messages send through ${provider.provider_code ?? 'your provider'}`}>
-        <div className="row">
-          {provider.channel.map((one) => (
-            <Badge key={one.delivery_channel} tone="success">
-              {CHANNEL_LABEL[one.delivery_channel]} · {one.status_label}
-            </Badge>
-          ))}
-        </div>
-      </Alert>
-    )
-  }
-  const required = provider.env.filter((one) => one.is_required)
-  const optional = provider.env.filter((one) => !one.is_required)
-  return (
-    <Alert severity="caution" title="Messages are held — no provider is configured">
-      <p>
-        Every confirmation, receipt, and reminder is saved in the outbox and waits there until a provider is
-        configured. Nothing reaches players yet
-        {provider.held_count > 0 ? `; ${countLabel(provider.held_count, 'message')} waiting now` : ''}.
-      </p>
-      <p>
-        To start sending, the venue owner sets <span className="mono">{required.map((one) => one.env_name).join(', ')}</span> on
-        the server (optionally <span className="mono">{optional.map((one) => one.env_name).join(', ')}</span>), restarts it, then
-        chooses <strong>Send queued now</strong>.
-      </p>
-    </Alert>
-  )
-}
 
 export default function Page(_prop: PageProp) {
   const { can } = useOperator()
@@ -64,6 +32,7 @@ export default function Page(_prop: PageProp) {
       />
       <div className="stack">
         <ProviderAlert resource={provider} />
+        {can_manage && <TestEmailForm />}
         <div>
           <Tabs<TabCode>
             label="Player message sections"

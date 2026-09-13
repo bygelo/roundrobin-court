@@ -12,6 +12,7 @@ import { TEST_DATABASE_URL, createTestVenue, type TestVenue } from './helper.ts'
 // The honest default: nothing configured. Set before any provider is resolved.
 delete process.env['NOTIFICATION_SMS_URL']
 delete process.env['NOTIFICATION_SMS_API_KEY']
+delete process.env['EMAIL_PROVIDER']
 
 let sequence = 0
 
@@ -142,7 +143,7 @@ describe('message — transactional notification', { skip: !TEST_DATABASE_URL },
     }>(response)
     assert.equal(provider.is_configured, false)
     assert.ok(provider.held_count > 0)
-    assert.ok(provider.channel.every((one) => one.status_label === 'Held — no provider configured'))
+    assert.ok(provider.channel.every((one) => /^Held — no (email|SMS) provider configured$/.test(one.status_label)))
     assert.equal(provider.env.find((one) => one.env_name === 'NOTIFICATION_SMS_URL')?.is_set, false)
 
     const process = await venue.request('/api/v1/message/outbox/process', { method: 'POST' })

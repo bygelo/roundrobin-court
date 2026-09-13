@@ -44,7 +44,8 @@
 .tv-score__team.is-winner { border-color: var(--success); }
 .tv-score__name { color: var(--ink); font-size: clamp(1rem, 1.6vw, 2rem); font-weight: 700; grid-area: name; line-height: 1.15; overflow-wrap: anywhere; }
 .tv-score__games { color: var(--muted); font-size: clamp(0.8rem, 1.1vw, 1.3rem); font-weight: 600; grid-area: games; }
-.tv-score__serve { color: var(--action); font-size: clamp(0.8rem, 1.1vw, 1.3rem); font-weight: 700; grid-area: serve; letter-spacing: 0.04em; text-transform: uppercase; }
+/* Text in the venue's action colour on the dark TV surface is lifted toward white so it keeps 4.5:1 whatever brand colour is chosen. */
+.tv-score__serve { color: color-mix(in srgb, var(--action) 50%, white); font-size: clamp(0.8rem, 1.1vw, 1.3rem); font-weight: 700; grid-area: serve; letter-spacing: 0.04em; text-transform: uppercase; }
 .tv-score__point { color: var(--ink); font-family: var(--font-heading); font-size: clamp(2.4rem, 4.5vw, 5.5rem); font-variant-numeric: tabular-nums; font-weight: 700; grid-area: point; line-height: 1; }
 
 .tv-score--large { gap: clamp(12px, 1.6vw, 28px); }
@@ -69,7 +70,7 @@
 .tv-tile__header { align-items: baseline; display: flex; justify-content: space-between; }
 .tv-tile__header h2 { font-size: clamp(1.3rem, 2.2vw, 2.6rem); }
 .tv-tile__header span { color: var(--muted); font-size: clamp(0.9rem, 1.2vw, 1.4rem); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-.tv-tile.is-live .tv-tile__header span { color: var(--action); }
+.tv-tile.is-live .tv-tile__header span { color: color-mix(in srgb, var(--action) 50%, white); }
 .tv-tile__idle { color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.9rem); }
 .tv-tile__booking { color: var(--body); font-size: clamp(0.9rem, 1.3vw, 1.6rem); font-weight: 600; }
 .tv-lounge__play { align-content: start; background: var(--surface); border-radius: var(--radius-card); display: grid; gap: clamp(10px, 1.2vw, 20px); padding: clamp(14px, 1.6vw, 28px); }
@@ -80,7 +81,7 @@
 .tv-play__court { font-size: clamp(0.95rem, 1.4vw, 1.7rem); }
 .tv-play__court strong { color: var(--ink); margin-right: var(--space-2); }
 .tv-play__next { display: grid; font-size: clamp(0.95rem, 1.4vw, 1.7rem); gap: var(--space-1); }
-.tv-play__next strong { color: var(--action); font-size: 0.8em; letter-spacing: 0.08em; text-transform: uppercase; }
+.tv-play__next strong { color: color-mix(in srgb, var(--action) 50%, white); font-size: 0.8em; letter-spacing: 0.08em; text-transform: uppercase; }
 
 /* counter */
 .tv-counter { display: grid; gap: clamp(16px, 2vw, 36px); grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); height: 100%; }
@@ -96,6 +97,50 @@
 .tv-counter__stat div { background: var(--tint); border-radius: var(--radius-card); display: grid; padding: clamp(14px, 1.6vw, 28px); }
 .tv-counter__stat strong { color: var(--ink); font-family: var(--font-heading); font-size: clamp(2.6rem, 5.4vw, 6.4rem); font-variant-numeric: tabular-nums; line-height: 1; }
 .tv-counter__stat span { color: var(--muted); font-size: clamp(1rem, 1.5vw, 1.8rem); font-weight: 600; }
+
+/* Studio brand on every screen */
+.tv__header { border-bottom: 4px solid var(--accent); padding-bottom: clamp(8px, 1vw, 16px); }
+.tv__venue { align-items: center; display: flex; gap: var(--space-2); }
+.tv__brand-mark { background: var(--accent); border-radius: 4px; box-shadow: 6px 0 0 var(--action); display: inline-block; flex: none; height: 0.9em; margin-right: 8px; width: 0.9em; }
+.display-admin__version { flex-wrap: wrap; gap: var(--space-2); }
+
+/* kiosk: a lobby tablet (1280x800 landscape, 768 portrait) */
+.tv-kiosk { display: grid; gap: clamp(16px, 2vw, 32px); grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); height: 100%; }
+.tv-kiosk__main { align-content: start; display: grid; gap: clamp(16px, 2vw, 32px); min-width: 0; }
+.tv-kiosk__section { display: grid; gap: clamp(10px, 1.2vw, 18px); }
+.tv-kiosk__section h1 { font-size: clamp(1.6rem, 3vw, 3.6rem); letter-spacing: -0.02em; }
+.tv-kiosk__section > h2 { font-size: clamp(1.3rem, 2.2vw, 2.6rem); }
+.tv-kiosk__court { display: grid; gap: clamp(10px, 1.2vw, 18px); grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); }
+.tv-kiosk__tile { background: var(--tint); border-radius: var(--radius-card); box-shadow: inset 0 5px 0 var(--accent); display: grid; gap: var(--space-3); padding: clamp(14px, 1.4vw, 24px); }
+.tv-kiosk__tile h2 { display: grid; font-size: clamp(1.25rem, 2vw, 2.4rem); }
+.tv-kiosk__tile h2 small { color: var(--muted); font-size: 0.6em; font-weight: 600; }
+.tv-kiosk__slot { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.tv-kiosk__slot li { background: var(--surface); border: 2px solid var(--line-strong); border-radius: var(--radius-card); display: grid; padding: 8px 14px; }
+.tv-kiosk__slot strong { color: var(--ink); font-family: var(--font-heading); font-size: clamp(1.15rem, 1.8vw, 2.2rem); font-variant-numeric: tabular-nums; }
+.tv-kiosk__slot span { color: var(--muted); font-size: clamp(0.85rem, 1.1vw, 1.3rem); font-weight: 600; }
+.tv-kiosk__list { display: grid; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.tv-kiosk__list li { align-items: center; background: var(--surface); border-radius: var(--radius-card); column-gap: var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr); padding: 12px 16px; }
+.tv-kiosk__list strong { color: var(--ink); font-size: clamp(1.1rem, 1.6vw, 2rem); }
+.tv-kiosk__list li > span:last-child { color: var(--body); font-size: clamp(0.95rem, 1.2vw, 1.5rem); grid-column: 2; }
+.tv-kiosk__tag { align-self: start; background: var(--tint); border-radius: 999px; color: var(--muted); font-size: 0.85rem; font-weight: 700; grid-row: span 2; letter-spacing: 0.06em; padding: 4px 10px; text-transform: uppercase; }
+.tv-kiosk__tag.is-now { background: var(--action); color: #fff; }
+.tv-kiosk__cta { align-content: center; background: var(--accent); border-radius: var(--radius-card); color: #fff; display: grid; gap: clamp(12px, 1.6vw, 24px); justify-items: center; padding: clamp(18px, 2.4vw, 40px); text-align: center; }
+.tv .tv-kiosk__cta h2 { color: #fff; font-size: clamp(1.8rem, 3.4vw, 4rem); letter-spacing: -0.02em; line-height: 1.05; }
+.tv-kiosk__cta p { color: rgba(255, 255, 255, 0.92); font-size: clamp(1rem, 1.5vw, 1.8rem); }
+.tv-kiosk__qr { background: #fff; border-radius: var(--radius-card); box-shadow: 0 0 0 6px var(--action); padding: 10px; width: min(100%, 340px); }
+.tv-kiosk__qr svg { display: block; height: auto; width: 100%; }
+.tv-kiosk__cta .tv-kiosk__url { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: clamp(0.85rem, 1.1vw, 1.3rem); overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .tv-kiosk { grid-template-columns: 1fr; }
+  .tv-kiosk__cta { grid-template-columns: minmax(0, 1fr) 200px; justify-items: start; order: -1; text-align: left; }
+  .tv-kiosk__qr { grid-column: 2; grid-row: 1 / span 2; width: 200px; }
+  .tv-kiosk__cta .tv-kiosk__url { grid-column: 1; }
+}
+@media (max-width: 520px) {
+  .tv-kiosk__cta { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .tv-kiosk__qr { grid-column: auto; grid-row: auto; }
+}
 
 @media (max-width: 900px) {
   .tv { overflow: visible; }

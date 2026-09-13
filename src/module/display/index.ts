@@ -4,6 +4,9 @@
 // POST /public/display/state takes the screen's credential, validates it
 // through the output pack, records the heartbeat, and returns a projection
 // built fresh for that screen's kind — nothing beyond what the screen shows.
+// Kinds: court, lounge, counter, kiosk. Every pull also carries the venue's
+// published Studio version and brand tokens, and records the Studio version
+// the screen reports it last rendered (site_version_number).
 
 import {
   TenantSuspendedError,
@@ -25,7 +28,10 @@ import {
   createScreen,
   listDisplayCourt,
   listScreen,
+  normaliseOrigin,
+  readSiteBrand,
   readVenueTimeZone,
+  recordSiteVersion,
   revokeScreen,
   type DisplayKind,
 } from './service.ts'
@@ -80,7 +86,12 @@ export function createDisplayRoute(store: Store): RouteContributor {
     })
 
     app.post('/public/display/state', async (context) => {
-      const body = (await context.req.json().catch(() => null)) as { credential?: unknown; config_version?: unknown } | null
+      const body = (await context.req.json().catch(() => null)) as {
+        credential?: unknown
+        config_version?: unknown
+        site_version_number?: unknown
+        origin?: unknown
+      } | null
       const credential = typeof body?.credential === 'string' ? body.credential.trim() : ''
       if (!credential) return context.json({ error: 'credential is required' }, 400)
       const refuse = () => context.json({ error: REFUSAL }, 401)
@@ -112,19 +123,31 @@ export function createDisplayRoute(store: Store): RouteContributor {
               AND deleted_at IS NULL`
           if (!screen) return undefined
 
-          const [venue] = await tenant.query<{ display_name: string }[]>`
-            SELECT display_name FROM organization WHERE organization_id = ${tenant.organization_id}`
+          // The screen reports the Studio version it last rendered; the answer
+          // carries the one published now. Operator -> Displays compares them.
+          const reported_site = body?.site_version_number
+          if (typeof reported_site === 'number' && Number.isInteger(reported_site) && reported_site >= 0 && reported_site < 2 ** 31) {
+            await recordSiteVersion(tenant, screen.display_screen_id, reported_site)
+          }
+          const brand = await readSiteBrand(tenant)
+
+          // The kiosk's QR must open on a phone: the configured public origin,
+          // else the page the tablet itself was loaded from, else this request.
+          const origin =
+            normaliseOrigin(process.env['COURT_PUBLIC_ORIGIN']) ?? normaliseOrigin(body?.origin) ?? normaliseOrigin(context.req.url)
 
           return {
             kind: screen.kind,
             display_name: screen.display_name,
-            venue_name: venue?.display_name ?? '',
+            venue_name: brand.display_name,
             time_zone: await readVenueTimeZone(tenant),
             generated_at: new Date().toISOString(),
             stale_after_second: STALE_AFTER_SECOND,
             refresh_after_second: 5,
             config_version: push.config_version,
-            projection: await buildProjection(tenant, screen),
+            site_version_number: brand.site_version_number,
+            brand: { display_name: brand.display_name, accent: brand.accent, action: brand.action, heading_font: brand.heading_font },
+            projection: await buildProjection(tenant, screen, { origin }),
           }
         })
         if (!answer) return refuse()
